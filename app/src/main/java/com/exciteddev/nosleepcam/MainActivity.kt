@@ -25,17 +25,17 @@ import com.exciteddev.nosleepcam.camera.CameraCapabilities
 import com.exciteddev.nosleepcam.camera.CameraController
 import com.exciteddev.nosleepcam.camera.CameraDescriptor
 import com.exciteddev.nosleepcam.camera.CameraListener
-import com.exciteddev.nosleepcam.camera.CameraPreviewView
 import com.exciteddev.nosleepcam.camera.CameraResolution
 import com.exciteddev.nosleepcam.camera.CameraStatus
 import com.exciteddev.nosleepcam.camera.PhotoSaver
-import com.exciteddev.nosleepcam.camera.PreviewSnapshot
 import com.exciteddev.nosleepcam.ui.CameraOverlay
 import com.exciteddev.nosleepcam.ui.CaptureAnimationView
 import com.exciteddev.nosleepcam.ui.HighSpeedState
 import com.exciteddev.nosleepcam.ui.SettingsPanel
 import com.exciteddev.nosleepcam.ui.SettingsUiState
 import com.exciteddev.nosleepcam.ui.message
+import com.exciteddev.nosleepcam.ui.preview.CameraPreviewView
+import com.exciteddev.nosleepcam.ui.preview.PreviewSnapshot
 import java.util.concurrent.Executors
 
 /**

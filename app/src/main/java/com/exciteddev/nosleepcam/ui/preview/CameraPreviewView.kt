@@ -1,4 +1,4 @@
-package com.exciteddev.nosleepcam.camera
+package com.exciteddev.nosleepcam.ui.preview
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -17,6 +17,10 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.exciteddev.nosleepcam.StartupTrace
+import com.exciteddev.nosleepcam.camera.CameraController
+import com.exciteddev.nosleepcam.camera.CameraListener
+import com.exciteddev.nosleepcam.camera.FocusStatus
+import com.exciteddev.nosleepcam.camera.PreviewGeometry
 import kotlin.math.roundToInt
 
 /**

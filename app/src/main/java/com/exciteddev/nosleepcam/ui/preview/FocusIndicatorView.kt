@@ -1,4 +1,4 @@
-package com.exciteddev.nosleepcam.camera
+package com.exciteddev.nosleepcam.ui.preview
 
 import android.animation.ValueAnimator
 import android.content.Context
@@ -9,6 +9,9 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import com.exciteddev.nosleepcam.camera.ExposureCompensation
+import com.exciteddev.nosleepcam.camera.FocusStatus
+import com.exciteddev.nosleepcam.camera.PreviewGeometry
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
