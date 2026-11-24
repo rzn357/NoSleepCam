@@ -300,17 +300,7 @@ internal class CameraController private constructor(
             return
         }
 
-        if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            closeCamera()
-            raiseStatus(CameraStatus.NoPermission)
-            return
-        }
-
-        val targetId = resolveTargetId(wantCameraId)
-        if (targetId == null) {
-            raiseStatus(CameraStatus.NoCameras)
-            return
-        }
+        val targetId = targetCameraId() ?: return
 
         if (device != null && device?.id != targetId) closeCamera()
 
@@ -321,10 +311,28 @@ internal class CameraController private constructor(
             return // continue in onCameraOpened
         }
 
-        if (texture == null) return // the camera is open; we will create the session as soon as the surface appears (onSurfaceAvailable)
+        // The camera is open; the session is created as soon as the surface appears (onSurfaceAvailable),
+        // or continues in onSessionConfigured / onSessionConfigureFailed when it is already being configured.
+        if (texture == null || sessionPending) return
 
-        if (sessionPending) return // continue in onSessionConfigured / onSessionConfigureFailed
+        ensureSession()
+    }
 
+    /** The camera to work with, or null when none can be used right now (the reason is reported to the UI). */
+    private fun targetCameraId(): String? {
+        if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            closeCamera()
+            raiseStatus(CameraStatus.NoPermission)
+            return null
+        }
+
+        val targetId = resolveTargetId(wantCameraId)
+        if (targetId == null) raiseStatus(CameraStatus.NoCameras)
+        return targetId
+    }
+
+    /** Creates the session if the resolution or mode changed, otherwise only refreshes the repeating request. */
+    private fun ensureSession() {
         // High-speed mode: the frame size is dictated by the camera; the resolution chosen by the user is not touched.
         val currentSpec = spec
         val highSpeed = if (currentSpec != null && highSpeedWanted(currentSpec)) resolveHighSpeed(currentSpec) else null

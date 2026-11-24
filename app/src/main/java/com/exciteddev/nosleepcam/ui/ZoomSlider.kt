@@ -161,62 +161,84 @@ class ZoomSlider
         // Gestures: the finger movement is computed relative to the touch point, so the ring does not "jump" under the finger
         // ------------------------------------------------------------------
 
-        override fun onTouchEvent(event: MotionEvent): Boolean {
+        override fun onTouchEvent(event: MotionEvent): Boolean =
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    gesture = classify(event.x, event.y)
-                    when (gesture) {
-                        // Not our touch: return false, and it goes to the frame (focus).
-                        Gesture.None -> {
-                            return false
-                        }
-
-                        Gesture.Drag -> {
-                            parent?.requestDisallowInterceptTouchEvent(true)
-                            startInteraction(event.y)
-                        }
-
-                        Gesture.Preset -> {
-                            downX = event.x
-                            downY = event.y
-                        }
-                    }
+                    onTouchDown(event)
                 }
 
                 MotionEvent.ACTION_MOVE -> {
-                    when (gesture) {
-                        Gesture.Drag -> drag(event.y)
-
-                        // The finger moved — this is no longer a tap on the dot.
-                        Gesture.Preset -> if (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop) gesture = Gesture.None
-
-                        Gesture.None -> return false
-                    }
+                    onTouchMove(event)
                 }
 
                 MotionEvent.ACTION_UP -> {
-                    when (gesture) {
-                        Gesture.Drag -> {
-                            performClick() // for accessibility services
-                            finishInteraction()
-                        }
-
-                        Gesture.Preset -> {
-                            jumpToPreset()
-                        }
-
-                        Gesture.None -> {
-                            return false
-                        }
-                    }
-                    gesture = Gesture.None
+                    if (gesture == Gesture.Drag) performClick() // for accessibility services
+                    onTouchUp()
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
-                    if (gesture == Gesture.Drag) finishInteraction()
-                    gesture = Gesture.None
+                    onTouchCancel()
+                }
+
+                else -> {
+                    true
                 }
             }
+
+        /** Returns false for a touch that is not ours: it then goes to the frame (focus). */
+        private fun onTouchDown(event: MotionEvent): Boolean {
+            gesture = classify(event.x, event.y)
+            when (gesture) {
+                Gesture.None -> {
+                    return false
+                }
+
+                Gesture.Drag -> {
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    startInteraction(event.y)
+                }
+
+                Gesture.Preset -> {
+                    downX = event.x
+                    downY = event.y
+                }
+            }
+            return true
+        }
+
+        private fun onTouchMove(event: MotionEvent): Boolean {
+            when (gesture) {
+                Gesture.Drag -> drag(event.y)
+
+                // The finger moved — this is no longer a tap on the dot.
+                Gesture.Preset -> if (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop) gesture = Gesture.None
+
+                Gesture.None -> return false
+            }
+            return true
+        }
+
+        private fun onTouchUp(): Boolean {
+            when (gesture) {
+                Gesture.Drag -> {
+                    finishInteraction()
+                }
+
+                Gesture.Preset -> {
+                    jumpToPreset()
+                }
+
+                Gesture.None -> {
+                    return false
+                }
+            }
+            gesture = Gesture.None
+            return true
+        }
+
+        private fun onTouchCancel(): Boolean {
+            if (gesture == Gesture.Drag) finishInteraction()
+            gesture = Gesture.None
             return true
         }
 

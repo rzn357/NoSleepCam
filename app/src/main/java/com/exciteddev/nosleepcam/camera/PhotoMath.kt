@@ -5,7 +5,9 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-/** Pure photo logic: JPEG orientation, size selection, file name. */
+/**
+ * Pure photo logic: JPEG orientation, size selection, file name, thumbnail decoding.
+ */
 internal object PhotoMath {
     /**
      * Value for `JPEG_ORIENTATION`: by how many degrees clockwise the sensor frame must be rotated so that
@@ -44,6 +46,34 @@ internal object PhotoMath {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(takenAtMs))
         return if (duplicate > 0) "IMG_${stamp}_$duplicate.jpg" else "IMG_$stamp.jpg"
     }
+
+    /**
+     * `inSampleSize` for decoding an image of [width] x [height] down to about [targetPx] on its longer side:
+     * the largest power of two that still leaves at least [targetPx].
+     */
+    fun sampleSize(
+        width: Int,
+        height: Int,
+        targetPx: Int,
+    ): Int {
+        var sample = 1
+        while (maxOf(width, height) / (sample * 2) >= targetPx) sample *= 2
+        return sample
+    }
+
+    /** Degrees clockwise a bitmap must be rotated to be upright, from its EXIF orientation tag. */
+    fun exifRotationDegrees(exifOrientation: Int): Float =
+        when (exifOrientation) {
+            EXIF_ROTATE_90 -> 90f
+            EXIF_ROTATE_180 -> 180f
+            EXIF_ROTATE_270 -> 270f
+            else -> 0f
+        }
+
+    // Values of the EXIF "Orientation" tag (the same as ExifInterface.ORIENTATION_ROTATE_*).
+    private const val EXIF_ROTATE_180 = 3
+    private const val EXIF_ROTATE_90 = 6
+    private const val EXIF_ROTATE_270 = 8
 
     private const val ASPECT_TOLERANCE = 0.02
 }

@@ -19,8 +19,8 @@ complexity:
   ComplexCondition:
     allowedConditions: 4
   TooManyFunctions:
-    # Android views and activities are naturally method-heavy; 11 (the default) is too tight for them.
-    allowedFunctionsPerClass: 20
+    # Android views (drawing + gestures) are naturally method-heavy; 11 (the default) is too tight for them.
+    allowedFunctionsPerClass: 25
     allowedFunctionsPerFile: 25
 
 naming:

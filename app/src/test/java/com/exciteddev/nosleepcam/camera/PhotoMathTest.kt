@@ -70,4 +70,20 @@ class PhotoMathTest {
         assertEquals("IMG_20261121_131533.jpg", PhotoMath.fileName(time))
         assertEquals("IMG_20261121_131533_2.jpg", PhotoMath.fileName(time, duplicate = 2))
     }
+
+    @Test
+    fun thumbnailsAreDecodedAtThePowerOfTwoThatKeepsEnoughPixels() {
+        assertEquals(1, PhotoMath.sampleSize(width = 300, height = 200, targetPx = 160))
+        assertEquals(2, PhotoMath.sampleSize(width = 4000, height = 3000, targetPx = 2000))
+        assertEquals(16, PhotoMath.sampleSize(width = 4608, height = 3456, targetPx = 160)) // 4608 / 16 = 288 ≥ 160; / 32 = 144
+    }
+
+    @Test
+    fun exifOrientationMapsToTheRotationNeededToMakeTheImageUpright() {
+        assertEquals(0f, PhotoMath.exifRotationDegrees(1), 0f) // normal
+        assertEquals(180f, PhotoMath.exifRotationDegrees(3), 0f)
+        assertEquals(90f, PhotoMath.exifRotationDegrees(6), 0f)
+        assertEquals(270f, PhotoMath.exifRotationDegrees(8), 0f)
+        assertEquals(0f, PhotoMath.exifRotationDegrees(0), 0f) // undefined
+    }
 }
