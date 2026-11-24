@@ -143,7 +143,7 @@ class SettingsPanel(
             this.cameras = cameras
             this.selectedCameraId = selectedCameraId
             cameraBox.visibility = if (cameras.size > 1) VISIBLE else GONE
-            cameraPicker.text = cameras.firstOrNull { it.id == selectedCameraId }?.name ?: ""
+            cameraPicker.text = cameras.firstOrNull { it.id == selectedCameraId }?.label(context) ?: ""
             languagePicker.text = languageName(AppLanguage.effectiveTag(context))
         } finally {
             updating = false
@@ -165,7 +165,7 @@ class SettingsPanel(
             .Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.camera_label)
             .setSingleChoiceItems(
-                cameras.map { it.name }.toTypedArray(),
+                cameras.map { it.label(context) }.toTypedArray(),
                 cameras.indexOfFirst { it.id == selectedCameraId },
             ) { dialog, which ->
                 dialog.dismiss()

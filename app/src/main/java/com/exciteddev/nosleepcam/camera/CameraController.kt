@@ -22,9 +22,7 @@ import android.os.HandlerThread
 import android.util.Log
 import android.util.Range
 import android.view.Surface
-import com.exciteddev.nosleepcam.AppLanguage
 import com.exciteddev.nosleepcam.Prefs
-import com.exciteddev.nosleepcam.R
 import com.exciteddev.nosleepcam.StartupTrace
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -69,8 +67,8 @@ internal interface CameraListener {
 
     fun onGeometry(geometry: PreviewGeometry) {}
 
-    /** Status text for the user; null — all is well, the message is hidden. */
-    fun onStatus(status: String?) {}
+    /** A problem to show to the user; null — all is well, the message is hidden. */
+    fun onStatus(status: CameraStatus?) {}
 
     fun onFocus(status: FocusStatus) {}
 
@@ -193,19 +191,6 @@ internal class CameraController private constructor(
             if (reportedFps > 0) listener.onFrameRate(reportedFps)
         }
 
-    /** A string in the language chosen right now (the application context itself keeps the language of process start). */
-    private fun str(
-        id: Int,
-        vararg args: Any,
-    ): String = AppLanguage.wrap(context).getString(id, *args)
-
-    /** The app language changed: names built from string resources are stale, so the caches are dropped. */
-    fun onLanguageChanged() =
-        post {
-            specs.clear()
-            lastCapabilities = null
-        }
-
     fun removeListener(listener: CameraListener) {
         listeners.remove(listener)
     }
@@ -317,13 +302,13 @@ internal class CameraController private constructor(
 
         if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             closeCamera()
-            raiseStatus(str(R.string.status_no_permission))
+            raiseStatus(CameraStatus.NoPermission)
             return
         }
 
         val targetId = resolveTargetId(wantCameraId)
         if (targetId == null) {
-            raiseStatus(str(R.string.status_no_cameras))
+            raiseStatus(CameraStatus.NoCameras)
             return
         }
 
@@ -348,7 +333,7 @@ internal class CameraController private constructor(
         if (resolution == null) {
             // All sizes were rejected by the device — clear the blacklist and try again later.
             blocked.clear()
-            raiseStatus(str(R.string.status_start_failed))
+            raiseStatus(CameraStatus.StartFailed)
             scheduleRetry()
             return
         }
@@ -400,7 +385,7 @@ internal class CameraController private constructor(
     private fun handleLost(reason: String) {
         Log.w(TAG, "Camera lost: $reason")
         closeCamera()
-        raiseStatus(str(R.string.status_connection_lost))
+        raiseStatus(CameraStatus.ConnectionLost)
         scheduleRetry()
     }
 
@@ -628,7 +613,7 @@ internal class CameraController private constructor(
 
             if (resolveHighSpeed(failedSpec) == null) {
                 failedSpec.highSpeedBroken = true
-                raiseStatus(str(R.string.status_highspeed_unsupported))
+                raiseStatus(CameraStatus.HighSpeedUnsupported)
             }
 
             activeHighSpeed = false
@@ -642,15 +627,7 @@ internal class CameraController private constructor(
 
         val next = resolveResolution()
         if (next != null) {
-            raiseStatus(
-                str(
-                    R.string.status_resolution_unsupported,
-                    resolution.width,
-                    resolution.height,
-                    next.width,
-                    next.height,
-                ),
-            )
+            raiseStatus(CameraStatus.ResolutionUnsupported(resolution, next))
         }
 
         reconcile()
@@ -1152,16 +1129,6 @@ internal class CameraController private constructor(
 
     private fun loadSpec(id: String): CameraSpec = specs[id] ?: specReader.read(id).also { specs[id] = it }
 
-    /** The user-facing name of a camera ("Back camera"), in the language chosen right now. */
-    private fun nameOf(spec: CameraSpec) =
-        str(
-            when (spec.lens) {
-                LensFacing.Front -> R.string.camera_front
-                LensFacing.External -> R.string.camera_external
-                LensFacing.Back -> R.string.camera_back
-            },
-        )
-
     /** Cameras suitable for showing an image (without depth/IR sensors etc.). */
     private fun listCameras(): List<CameraDescriptor> {
         val usable = ArrayList<CameraSpec>()
@@ -1182,15 +1149,15 @@ internal class CameraController private constructor(
             }
         }
 
-        // If there are several identical cameras, we number them: "Back camera 1", "Back camera 2".
+        // If there are several cameras looking the same way, we number them: "Back camera 1", "Back camera 2".
         return usable
-            .groupBy { nameOf(it) }
+            .groupBy { it.lens }
             .values
             .flatMap { group ->
                 if (group.size == 1) {
-                    group.map { CameraDescriptor(it.id, nameOf(it)) }
+                    group.map { CameraDescriptor(it.id, it.lens) }
                 } else {
-                    group.mapIndexed { i, s -> CameraDescriptor(s.id, str(R.string.camera_numbered, nameOf(s), i + 1)) }
+                    group.mapIndexed { i, spec -> CameraDescriptor(spec.id, spec.lens, i + 1) }
                 }
             }.sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
     }
@@ -1200,7 +1167,7 @@ internal class CameraController private constructor(
         val cameras = listCameras()
         val highSpeed = if (spec.supportsHighSpeed) resolveHighSpeed(spec) else null
         return CameraCapabilities(
-            camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, nameOf(spec)),
+            camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, spec.lens),
             availableCameras = cameras,
             resolutions = spec.resolutions,
             frameRates = spec.frameRates,
@@ -1231,7 +1198,7 @@ internal class CameraController private constructor(
         resolution: CameraResolution?,
     ) = resolution?.let { CameraSpecRules.aeFpsRange(spec.aeFpsRanges, spec.frameRates[it]) }
 
-    private fun raiseStatus(status: String?) = emit { it.onStatus(status) }
+    private fun raiseStatus(status: CameraStatus?) = emit { it.onStatus(status) }
 
     private inline fun emit(block: (CameraListener) -> Unit) {
         for (listener in listeners) block(listener)

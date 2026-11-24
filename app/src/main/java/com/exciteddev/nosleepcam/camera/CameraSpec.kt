@@ -1,7 +1,7 @@
 package com.exciteddev.nosleepcam.camera
 
 /** Which way a camera looks. [External] cameras (USB) are treated like back cameras. */
-internal enum class LensFacing { Front, Back, External }
+enum class LensFacing { Front, Back, External }
 
 /** A camera's high-speed mode: frame size and the allowed rate range (e.g. 1920×1080, [30,120]). */
 internal data class HighSpeedConfig(

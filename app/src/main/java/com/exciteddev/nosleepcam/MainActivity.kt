@@ -29,11 +29,13 @@ import com.exciteddev.nosleepcam.camera.CameraDescriptor
 import com.exciteddev.nosleepcam.camera.CameraListener
 import com.exciteddev.nosleepcam.camera.CameraPreviewView
 import com.exciteddev.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.camera.CameraStatus
 import com.exciteddev.nosleepcam.camera.PhotoSaver
 import com.exciteddev.nosleepcam.camera.PreviewSnapshot
 import com.exciteddev.nosleepcam.ui.CameraOverlay
 import com.exciteddev.nosleepcam.ui.CaptureAnimationView
 import com.exciteddev.nosleepcam.ui.SettingsPanel
+import com.exciteddev.nosleepcam.ui.message
 
 /**
  * Single screen: full-screen camera with the zoom slider, flash and settings on top.
@@ -54,7 +56,7 @@ class MainActivity : Activity() {
     private var appliedResolution: CameraResolution? = null
     private var capabilities: CameraCapabilities? = null
     private var selectedCameraId: String? = null
-    private var status: String? = null
+    private var status: CameraStatus? = null
     private var permissionNeeded = false
     private var permissionRequested = false
     private var statusToken = 0
@@ -85,7 +87,7 @@ class MainActivity : Activity() {
                 ui.post { handleResolutionApplied(resolution) }
             }
 
-            override fun onStatus(status: String?) {
+            override fun onStatus(status: CameraStatus?) {
                 ui.post { onStatusChanged(status) }
             }
 
@@ -230,7 +232,7 @@ class MainActivity : Activity() {
         overlay.setFlash(flashOn)
         overlay.setHighSpeed(highSpeed)
         overlay.setFrameRate(frameRate)
-        overlay.setStatus(status)
+        overlay.setStatus(status?.message(this))
         overlay.setPermissionPanelVisible(permissionNeeded)
         overlay.layoutFor(contentHeightDp())
         loadLastPhotoThumbnail()
@@ -441,15 +443,15 @@ class MainActivity : Activity() {
         if (isSettingsOpen) refreshSettings()
     }
 
-    private fun onStatusChanged(newStatus: String?) {
+    private fun onStatusChanged(newStatus: CameraStatus?) {
         if (isDestroyed) return
 
         status = newStatus
 
         // Show the problem message immediately, even if the controls have not been created yet.
-        if (!newStatus.isNullOrEmpty()) ensureOverlay()
+        if (newStatus != null) ensureOverlay()
 
-        overlay?.setStatus(newStatus)
+        overlay?.setStatus(newStatus?.message(this))
     }
 
     // ------------------------------------------------------------------
@@ -478,7 +480,7 @@ class MainActivity : Activity() {
         val token = ++statusToken
         overlay?.setStatus(text)
         ui.postDelayed({
-            if (token == statusToken) overlay?.setStatus(status)
+            if (token == statusToken) overlay?.setStatus(status?.message(this))
         }, TRANSIENT_STATUS_MS)
     }
 
@@ -556,8 +558,6 @@ class MainActivity : Activity() {
         if (tag == AppLanguage.effectiveTag(this)) return
 
         prefs.language = tag
-        // Strings the camera controller already built (camera names) are in the old language.
-        controller.onLanguageChanged()
         // Recreating the activity re-reads all resources in the new language; the camera reopens right after.
         recreate()
     }

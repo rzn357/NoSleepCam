@@ -69,11 +69,34 @@ data class CameraResolution(
     }
 }
 
-/** One physical/logical camera of the device (back, front, etc.). */
+/**
+ * One physical/logical camera of the device (back, front, etc.). The name shown to the user is built by the UI
+ * from [lens] and [number] (set only when several cameras look the same way: "Back camera 1", "Back camera 2").
+ */
 data class CameraDescriptor(
     val id: String,
-    val name: String,
+    val lens: LensFacing,
+    val number: Int? = null,
 )
+
+/** Problems the camera layer reports. The UI decides how to word them (and in which language). */
+internal sealed interface CameraStatus {
+    data object NoPermission : CameraStatus
+
+    data object NoCameras : CameraStatus
+
+    data object StartFailed : CameraStatus
+
+    data object ConnectionLost : CameraStatus
+
+    data object HighSpeedUnsupported : CameraStatus
+
+    /** The device rejected [requested], so [fallback] is used instead. */
+    data class ResolutionUnsupported(
+        val requested: CameraResolution,
+        val fallback: CameraResolution,
+    ) : CameraStatus
+}
 
 /** Capabilities of the opened camera: what can be shown to the user in the UI. */
 class CameraCapabilities(
