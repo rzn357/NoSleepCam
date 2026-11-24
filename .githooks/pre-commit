@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# Pre-commit hook: formatting (ktlint via Spotless) and static analysis (detekt).
+# Runs only when Kotlin or Gradle files are part of the commit.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Skip in an emergency:    git commit --no-verify
+
+set -euo pipefail
+
+cd "$(git rev-parse --show-toplevel)"
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if ! grep -Eq '\.(kt|kts)$|^\.editorconfig$|^config/detekt/|^gradle/libs\.versions\.toml$' <<<"$staged"; then
+    exit 0
+fi
+
+echo "pre-commit: ktlint (spotlessCheck) + detekt..."
+
+if ! ./gradlew spotlessCheck detekt --quiet --console=plain; then
+    echo
+    echo "pre-commit: checks failed, the commit was not created."
+    echo "  Fix formatting automatically:  ./gradlew spotlessApply   (then 'git add' the changes)"
+    echo "  Detekt reports:                app/build/reports/detekt/detekt.html"
+    exit 1
+fi
+
+echo "pre-commit: OK"

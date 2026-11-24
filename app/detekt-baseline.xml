@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:CameraController.kt:CameraController$session == null || device == null || surface == null || spec == null || activeHighSpeed</ID>
+    <ID>ComplexCondition:CameraController.kt:CameraController$session == null || device == null || surface == null || spec == null || activeResolution == null</ID>
+    <ID>ComplexCondition:CameraController.kt:CameraController$session == null || spec == null || resolution == null || activeHighSpeed || (noAf &amp;&amp; spec.maxAeRegions == 0)</ID>
+    <ID>ComplexCondition:CameraController.kt:CameraController$spec == null || session == null || reader == null || device == null || activeHighSpeed</ID>
+    <ID>CyclomaticComplexMethod:CameraController.kt:CameraController$private fun doCapturePhoto</ID>
+    <ID>CyclomaticComplexMethod:CameraController.kt:CameraController$private fun loadSpec: CameraSpec</ID>
+    <ID>CyclomaticComplexMethod:CameraController.kt:CameraController$private fun reconcile</ID>
+    <ID>CyclomaticComplexMethod:CameraController.kt:CameraController$private fun startFocus</ID>
+    <ID>CyclomaticComplexMethod:PhotoSaver.kt:PhotoSaver$@Suppress("DEPRECATION") private fun thumbnailLegacy: Bitmap?</ID>
+    <ID>CyclomaticComplexMethod:ZoomSlider.kt:ZoomSlider$override fun onTouchEvent: Boolean</ID>
+    <ID>LargeClass:CameraController.kt:CameraController</ID>
+    <ID>LongMethod:CameraController.kt:CameraController$private fun loadSpec: CameraSpec</ID>
+    <ID>TooManyFunctions:CameraController.kt:CameraController</ID>
+    <ID>TooManyFunctions:MainActivity.kt:MainActivity : Activity</ID>
+  </CurrentIssues>
+</SmellBaseline>

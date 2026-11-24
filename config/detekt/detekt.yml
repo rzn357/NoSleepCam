@@ -1,0 +1,35 @@
+# Only the differences from detekt's default configuration (buildUponDefaultConfig = true).
+# Run: ./gradlew detekt
+
+style:
+  MagicNumber:
+    # This is a UI/Camera2 code base full of dp sizes and angles; named constants are used where they carry meaning.
+    active: false
+  ReturnCount:
+    active: false
+  ThrowsCount:
+    active: false
+  MaxLineLength:
+    maxLineLength: 140
+    excludeCommentStatements: true
+  UnusedPrivateProperty:
+    active: true
+
+complexity:
+  ComplexCondition:
+    allowedConditions: 4
+  TooManyFunctions:
+    # Android views and activities are naturally method-heavy; 11 (the default) is too tight for them.
+    allowedFunctionsPerClass: 20
+    allowedFunctionsPerFile: 25
+
+naming:
+  FunctionNaming:
+    active: true
+
+exceptions:
+  TooGenericExceptionCaught:
+    # Camera2 and MediaStore throw many unrelated runtime exceptions; the failure paths log and recover on purpose.
+    active: false
+  SwallowedException:
+    active: false

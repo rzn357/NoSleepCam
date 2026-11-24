@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.detekt)
 }
 
 // -PstartupTrace=true enables startup timestamps and frame rate diagnostics in logcat
@@ -39,10 +40,31 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    // The in-app language switcher (see AppLanguage) needs every language in the base APK: no per-language splits.
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
+    // Android Lint is part of the quality gate: any warning fails the build.
+    lint {
+        warningsAsErrors = true
+        abortOnError = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+}
+
+// Static analysis: `./gradlew detekt`. Configuration: config/detekt/detekt.yml (on top of the defaults).
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom(rootProject.file("config/detekt/detekt.yml"))
+    source.setFrom("src/main/java", "src/test/java")
+    baseline = file("detekt-baseline.xml")
 }
 
 // The app deliberately does not depend on AppCompat/Material/AndroidX: only framework widgets and the Kotlin stdlib —
