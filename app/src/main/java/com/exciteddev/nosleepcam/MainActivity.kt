@@ -127,7 +127,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         prefs = Prefs(this)
-        controller = CameraController.getShared(this)
+        controller = (application as NoSleepCamApp).cameraController
 
         // At startup the activity holds only the camera, so the first frame appears as soon as possible.
         // The controls (CameraOverlay) and the settings panel (SettingsPanel) are added later.
@@ -424,6 +424,8 @@ class MainActivity : Activity() {
         capabilities = caps
         selectedCameraId = caps.camera.id
         controller.setCameraId(caps.camera.id)
+        // Remember the camera that is really open (it differs from the saved one if that one disappeared).
+        if (prefs.cameraId != caps.camera.id) prefs.cameraId = caps.camera.id
 
         // The camera (or its mode) no longer supports the high rate — turn the mode off.
         if (highSpeed && caps.highSpeedFps == 0) {

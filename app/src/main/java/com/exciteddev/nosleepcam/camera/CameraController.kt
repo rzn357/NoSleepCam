@@ -23,7 +23,6 @@ import android.util.Log
 import android.util.Range
 import android.view.Surface
 import com.exciteddev.nosleepcam.LOG_TAG
-import com.exciteddev.nosleepcam.Prefs
 import com.exciteddev.nosleepcam.StartupTrace
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
@@ -94,9 +93,10 @@ internal interface CameraListener {
  * one thread, so it is deliberately kept in a single class instead of being scattered over objects that share that state.
  */
 @Suppress("LargeClass", "TooManyFunctions")
-internal class CameraController private constructor(
-    private val context: Context,
+internal class CameraController(
+    context: Context,
 ) {
+    private val context: Context = context.applicationContext ?: context
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private val specReader = CameraSpecReader(manager)
     private val thread = HandlerThread("NoSleepCam.Camera").also { it.start() }
@@ -252,6 +252,39 @@ internal class CameraController private constructor(
         if (wantHighSpeed == on) return
         wantHighSpeed = on
         post(::reconcile)
+    }
+
+    /** What the camera should start with when it is opened before the UI exists (the values saved at the last launch). */
+    class WarmUpSettings(
+        val cameraId: String?,
+        val resolution: CameraResolution?,
+    )
+
+    /**
+     * Starts opening the camera right at process start — in parallel with the UI creation
+     * (hundreds of milliseconds during which the camera used to just wait). Does nothing without the camera permission.
+     * All the work, including [loadSettings] (reading preferences from disk), is on the camera thread, not the main one.
+     */
+    fun warmUp(loadSettings: () -> WarmUpSettings) {
+        try {
+            if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
+
+            post {
+                val settings = loadSettings()
+                wantCameraId = settings.cameraId
+                // We pick up the saved resolution already here: otherwise the first session would start with the default one
+                // and immediately be rebuilt as soon as the UI reports the chosen one.
+                wantResolution = settings.resolution
+                wantActive = true
+                reconcile()
+            }
+
+            handler.postDelayed({
+                if (!uiAttached) setActive(false)
+            }, WARM_UP_TIMEOUT_MS)
+        } catch (ex: Exception) {
+            Log.w(LOG_TAG, "warmUp failed: ${ex.message}")
+        }
     }
 
     fun onSurfaceAvailable(texture: SurfaceTexture) =
@@ -442,7 +475,6 @@ internal class CameraController private constructor(
         opening = false
         retryDelayMs = 1000L
         handler.removeCallbacks(retryRunnable)
-        Prefs(context).cameraId = camera.id
 
         // First we start the session (if the surface already exists). We assemble the full list of cameras for the UI only AFTER
         // the session is configured and the first request is sent: session callbacks arrive on this same thread, so assembling it
@@ -1291,47 +1323,5 @@ internal class CameraController private constructor(
 
         /** If the UI never connected (the process was started not to show the screen) — we do not keep the camera. */
         private const val WARM_UP_TIMEOUT_MS = 15_000L
-
-        // A shared instance for the whole process: the camera can be warmed up even before the UI is created.
-        private val sharedLock = Any()
-
-        // The controller holds only the ApplicationContext (see getShared), so there is no activity leak here.
-        @SuppressLint("StaticFieldLeak")
-        private var shared: CameraController? = null
-
-        /** The only controller of the process. The UI connects to it rather than creating its own. */
-        fun getShared(context: Context): CameraController =
-            synchronized(sharedLock) {
-                shared ?: CameraController(context.applicationContext ?: context).also { shared = it }
-            }
-
-        /**
-         * Starts opening the camera right at process start — in parallel with the UI creation
-         * (hundreds of milliseconds during which the camera used to just wait). Does nothing without the camera permission.
-         * All the work (reading settings, camera characteristics) is on the camera thread, not the main one.
-         */
-        fun warmUp(context: Context) {
-            try {
-                if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) return
-
-                val controller = getShared(context)
-                controller.post {
-                    val prefs = Prefs(context)
-                    val cameraId = prefs.cameraId
-                    controller.wantCameraId = cameraId
-                    // We pick up the saved resolution already here: otherwise the first session would start with the default one
-                    // and immediately be rebuilt as soon as the UI reports the chosen one.
-                    controller.wantResolution = cameraId?.let(prefs::resolution)
-                    controller.wantActive = true
-                    controller.reconcile()
-                }
-
-                controller.handler.postDelayed({
-                    if (!controller.uiAttached) controller.setActive(false)
-                }, WARM_UP_TIMEOUT_MS)
-            } catch (ex: Exception) {
-                Log.w(LOG_TAG, "warmUp failed: ${ex.message}")
-            }
-        }
     }
 }
