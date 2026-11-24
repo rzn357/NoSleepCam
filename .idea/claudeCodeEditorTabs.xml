@@ -1,21 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ClaudeCodeEditorTabs">
-    <option name="activeSessionId" value="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" />
+    <option name="activeSessionId" value="40e20e15-d3d4-4ff0-8e1b-6621e3995b85" />
     <option name="openSessionIds">
       <list>
         <option value="c43fef85-caf7-42c0-944d-56e8645033df" />
         <option value="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" />
+        <option value="223ad965-e86a-4b71-a313-89b91e6f4cfd" />
+        <option value="40e20e15-d3d4-4ff0-8e1b-6621e3995b85" />
       </list>
     </option>
     <option name="sessionPaths">
       <map>
+        <entry key="223ad965-e86a-4b71-a313-89b91e6f4cfd" value="/sessions/69c704ad-a167-480e-bfc5-40aa3eca8700" />
+        <entry key="40e20e15-d3d4-4ff0-8e1b-6621e3995b85" value="/sessions/8ee0c82b-37c6-4a35-8b40-d3214babd8d0" />
         <entry key="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" value="/sessions/9ce7c101-ea51-4c7c-ac32-82f4f419b306" />
         <entry key="c43fef85-caf7-42c0-944d-56e8645033df" value="/sessions/e50ebb76-405d-4995-abfb-dc154d079e5a" />
       </map>
     </option>
     <option name="sessionTitles">
       <map>
+        <entry key="223ad965-e86a-4b71-a313-89b91e6f4cfd" value="Іменування пакету com.example.nosleepcam" />
+        <entry key="40e20e15-d3d4-4ff0-8e1b-6621e3995b85" value="Скріншоти та GIF для README" />
         <entry key="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" value="Kotlin-проєкт для портфоліо на GitHub" />
         <entry key="c43fef85-caf7-42c0-944d-56e8645033df" value="Приведи всі коментарі в коді на англійську. А тако" />
       </map>

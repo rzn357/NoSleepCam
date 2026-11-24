@@ -1,9 +1,83 @@
+<div align="center">
+
 # NoSleepCam
 
-An Android app written in Kotlin: it opens the camera and keeps it on for as long as the app is open.
-A full rewrite of the .NET MAUI app `AlwaysOnCamera` (the motivation was slow startup) that keeps all of its functionality.
+**An Android camera that is always on.**<br>
+It opens the camera and keeps it live for as long as the app is open — and starts in a fraction of a second.
+
+![Platform](https://img.shields.io/badge/Android-7.0%2B_(API_24)-3DDC84?logo=android&logoColor=white)
+![Language](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
+![Camera](https://img.shields.io/badge/Camera2-API-4285F4)
+![Dependencies](https://img.shields.io/badge/AndroidX%20%2F%20Material-none-brightgreen)
+![Languages](https://img.shields.io/badge/UI-English%20%7C%20%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D0%B0-blue)
+
+<br>
+
+<img src="docs/screenshots/demo.gif" alt="NoSleepCam demo: zoom, flash, tap to focus, brightness, settings and photo capture" width="300">
+
+<sub>Zoom · flash · tap to focus · brightness · settings · photo on double tap</sub>
+
+</div>
+
+<br>
+
+A full rewrite of the .NET MAUI app `AlwaysOnCamera` in Kotlin. The motivation was slow startup; all of the original's
+functionality is kept.
+
+| | |
+|---|---|
+| ⚡ **Fast** | camera opened ≈ 100 ms after process start, `TotalTime` ≈ 230–450 ms on a Honor 10 (MAUI: ≈ 1800 ms) |
+| 🌙 **Never sleeps** | the screen stays on and the camera reconnects on its own if it is lost |
+| 🎯 **Minimal** | just the camera, a zoom slider, the real frame rate, flash and settings |
+| 🪶 **Lean** | no AndroidX, no Material — only framework widgets and the Kotlin stdlib |
+
+## Contents
+
+- [Screenshots](#screenshots)
+- [Features](#features)
+- [Build and install](#build-and-install)
+- [Fast startup](#fast-startup)
+- [Tap to focus on the Honor 10](#tap-to-focus-on-the-honor-10)
+- [Project structure](#project-structure)
+- [Differences from the MAUI version](#differences-from-the-maui-version)
+- [Known limitations](#known-limitations)
+
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/main.png" alt="Main screen" width="230"><br>
+      <sub><b>Always-on camera</b><br>frame rate, flash, settings and the zoom slider</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/zoom.png" alt="Zoom scale" width="230"><br>
+      <sub><b>Zoom scale</b><br>logarithmic, up to 10x on the Honor 10</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/zoomed.png" alt="Zoomed to 3.4x" width="230"><br>
+      <sub><b>Zoomed in</b><br>the ring shows the current value</sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/focus.png" alt="Tap to focus" width="230"><br>
+      <sub><b>Tap to focus</b><br>four-corner indicator and the brightness “sun”</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/brightness.png" alt="Exposure compensation" width="230"><br>
+      <sub><b>Brightness</b><br>drag the sun for exposure compensation</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="docs/screenshots/settings.png" alt="Settings" width="230"><br>
+      <sub><b>Settings</b><br>resolution, high-speed mode, camera, language</sub>
+    </td>
+  </tr>
+</table>
 
 ## Features
+
+### Always on
 
 - **The camera is always on.** The screen does not turn off while the app is open. If the camera is lost (taken by another
   app, a driver error), the app reconnects on its own. When the app is minimized the camera is released, and when you come
@@ -14,44 +88,67 @@ A full rewrite of the .NET MAUI app `AlwaysOnCamera` (the motivation was slow st
   temporarily), and the zoom slider always sits below the icon row — they never overlap.
   The app computes the frame rate itself from the sensor timestamps once a second; when the camera delivers no frames the
   badge is hidden.
-- **Zoom up to the maximum.** The slider is a copy of the Huawei camera's slider (all sizes and boundaries were measured on the Honor 10):
-  - **At rest** — a ring with the current value and a short dotted tail (three faint dots and a bright end one). The ring sits
-    in a slot at the frame centre while the zoom is below **2x**, and 40 dp higher from 2x on; the tail is always on the
-    other side (up at low zoom, down at high zoom), and the bright dot is where the ring will be after switching.
-  - **Touches.** The scale is opened **only by a touch on the ring** (±35 dp horizontally, ±16 dp vertically). A tap on the
-    bright end dot switches the zoom in a jump (1x ↔ 2x). Any other touch, including right next to the ring, is **focus**,
-    not zoom (previously the slider caught touches along its whole 76 dp × scale-height strip, and focus did not work
-    next to it).
-  - **Scale** (while a finger is on the ring and for ≈1 s after release): a dotted line of ≈240 dp symmetric around the
-    frame centre, labels "10x" at the top and "1x" at the bottom, a big number in the middle of the screen ("2.0x"), and the
-    ring with a dot follows the finger 1:1 (relatively). The other buttons (fps, flash, gear) are hidden meanwhile. After
-    release the ring shows the value again, and after ≈1 s the scale collapses (0.4 s) and the ring returns to its slot.
-    The scale is logarithmic.
-  - **Maximum** — `availableMaxDigitalZoom` from Camera2. The exception is the **Huawei/Honor back camera**: the standard
-    API says 6x, while the manufacturer's own camera app gives 10x, so we offer 10x (beyond that the Honor 10 driver hangs).
-    If the camera silently clamps the requested zoom, the maximum is lowered.
-- **Flash.** Torch mode: lit continuously. The icon is always visible; for cameras without a flash it is dimmed, and
-  tapping it explains why.
+
+### Zoom
+
+Zoom goes up to the maximum. The slider is a copy of the Huawei camera's slider (all sizes and boundaries were measured on
+the Honor 10):
+
+- **At rest** — a ring with the current value and a short dotted tail (three faint dots and a bright end one). The ring sits
+  in a slot at the frame centre while the zoom is below **2x**, and 40 dp higher from 2x on; the tail is always on the
+  other side (up at low zoom, down at high zoom), and the bright dot is where the ring will be after switching.
+- **Touches.** The scale is opened **only by a touch on the ring** (±35 dp horizontally, ±16 dp vertically). A tap on the
+  bright end dot switches the zoom in a jump (1x ↔ 2x). Any other touch, including right next to the ring, is **focus**,
+  not zoom (previously the slider caught touches along its whole 76 dp × scale-height strip, and focus did not work
+  next to it).
+- **Scale** (while a finger is on the ring and for ≈1 s after release): a dotted line of ≈240 dp symmetric around the
+  frame centre, labels "10x" at the top and "1x" at the bottom, a big number in the middle of the screen ("2.0x"), and the
+  ring with a dot follows the finger 1:1 (relatively). The other buttons (fps, flash, gear) are hidden meanwhile. After
+  release the ring shows the value again, and after ≈1 s the scale collapses (0.4 s) and the ring returns to its slot.
+  The scale is logarithmic.
+- **Maximum** — `availableMaxDigitalZoom` from Camera2. The exception is the **Huawei/Honor back camera**: the standard
+  API says 6x, while the manufacturer's own camera app gives 10x, so we offer 10x (beyond that the Honor 10 driver hangs).
+  If the camera silently clamps the requested zoom, the maximum is lowered.
+
+### Flash
+
+Torch mode: lit continuously. The icon is always visible; for cameras without a flash it is dimmed, and tapping it
+explains why.
+
+### Image quality and settings
+
 - **Image quality** (gear). A list of the resolutions the camera really supports, with the highest frame rate for each.
   The choice is remembered separately for each camera. If there are several cameras, the camera picker is there too.
 - **High-speed mode** (a switch; only where the camera declares `CONSTRAINED_HIGH_SPEED_VIDEO`; on the Honor 10 — the back
   camera, 1920×1080, measured ≈119 fps). No flash or tap to focus; in low light the image is dark. Not persisted between
   launches.
+
+### Focus and brightness
+
 - **Autofocus.** Continuous + tap to focus (with exposure metering at that point). The indicator is a square of four corner
   brackets, as in the Huawei camera: white — searching, green — in focus, red — failed.
 - **Brightness.** After a touch a "sun" appears to the right of the square. Drag it up/down: the square hides, a dotted
   scale appears, and on the left the exposure compensation value (`+1.0`, `−1.5`). The range and step are taken from the
   camera (Honor 10: ±2 EV in 0.5 steps). The brightness stays after release, and a new touch resets it. On cameras without
   autofocus (the front one) a touch only meters the exposure and gives brightness adjustment. Unavailable in high-speed mode.
-- **Photo on double tap.** A double tap on the screen takes a full-size photo (JPEG, on the Honor 10 — 4608×3456, with the
-  same aspect ratio as the preview; quality 95) with the current zoom, brightness and flash. As always, the first tap of the
-  double tap starts focusing, so the photo waits for its result and is taken with the lens locked; the brightness reset of
-  a regular tap is postponed for the duration of the double-tap window, so the photo has the brightness you set. The photo
-  is saved to the gallery (`DCIM/Camera/IMG_YYYYMMDD_HHMMSS.jpg`, as in the Huawei camera) without any permissions on
-  Android 10+ (on Android 9 and older the app asks once for the storage permission). Animation: the screen briefly "blinks"
-  (shutter), the frozen image shrinks, rounds off and flies into a small circle (40 dp) in the bottom-left corner, where
-  the last photo stays (it is kept between launches); tapping the circle opens the photo in the gallery. In high-speed
-  mode photos are unavailable (such a session has no JPEG stream).
+
+### Photo on double tap
+
+A double tap on the screen takes a full-size photo (JPEG, on the Honor 10 — 4608×3456, with the same aspect ratio as the
+preview; quality 95) with the current zoom, brightness and flash.
+
+- As always, the first tap of the double tap starts focusing, so the photo waits for its result and is taken with the lens
+  locked; the brightness reset of a regular tap is postponed for the duration of the double-tap window, so the photo has
+  the brightness you set.
+- The photo is saved to the gallery (`DCIM/Camera/IMG_YYYYMMDD_HHMMSS.jpg`, as in the Huawei camera) without any
+  permissions on Android 10+ (on Android 9 and older the app asks once for the storage permission).
+- **Animation:** the screen briefly "blinks" (shutter), the frozen image shrinks, rounds off and flies into a small circle
+  (40 dp) in the bottom-left corner, where the last photo stays (it is kept between launches); tapping the circle opens
+  the photo in the gallery.
+- In high-speed mode photos are unavailable (such a session has no JPEG stream).
+
+### Permissions and languages
+
 - **Camera permission:** requested on the first launch; if denied — a panel with the "Grant access" and "Open settings" buttons.
 - **Languages:** English (`values/strings.xml`, the default) and Ukrainian (`values-uk/strings.xml`). Until the user
   chooses, the app uses the phone's system language if it is one of these two, and English otherwise. In the settings
@@ -59,23 +156,28 @@ A full rewrite of the .NET MAUI app `AlwaysOnCamera` (the motivation was slow st
   `AppLanguage` (the base context is wrapped in `attachBaseContext`, the activity is recreated when the choice changes).
   All code comments and this README are in English.
 
-## Structure
+## Build and install
 
-| File | Purpose |
-|---|---|
-| `NoSleepCamApp.kt` | `Application`: camera warm-up before the UI is created |
-| `MainActivity.kt` | the single screen: lifecycle, permission, wiring the camera to the UI |
-| `camera/CameraController.kt` | Camera2: opening, session, zoom, AF, high-speed mode, reconnection |
-| `camera/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
-| `camera/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
-| `camera/ExposureCompensation.kt`, `camera/CameraModels.kt` | "sun" position ↔ EV index and label; models |
-| `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
-| `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt` | controls over the camera; the settings panel |
-| `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
-| `camera/PhotoSaver.kt`, `camera/PhotoMath.kt` | writing to the gallery (MediaStore) and the thumbnail; JPEG orientation, size selection, file name |
-| `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape) |
+```bash
+./gradlew assembleDebug
+./gradlew installRelease      # Release is signed with the debug key (a personal app), so it installs without setting up keys
+```
 
-The minimum Android version is 7.0 (API 24). There are no AndroidX/Material dependencies — only framework widgets and the Kotlin stdlib.
+The minimum Android version is 7.0 (API 24). There are no AndroidX/Material dependencies — only framework widgets and the
+Kotlin stdlib.
+
+> [!TIP]
+> Evaluate speed on a **Release** build: Debug is always much slower.
+
+> [!NOTE]
+> **Cyrillic in the Windows user path.** `./gradlew test` fails (`Could not find or load main class worker.org.gradle…`):
+> the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
+>
+> ```
+> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.example.nosleepcam.CameraResolutionTest com.example.nosleepcam.ExposureCompensationTest
+> ```
+>
+> (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
 
 ## Fast startup
 
@@ -95,15 +197,13 @@ Measurements on the Honor 10 (COL-L29, Android 10), Release, cold start (`am sta
 | camera opened (from process start) | ≈850 ms | 66–116 ms |
 | `TotalTime` | ≈1800–1900 ms | 222–640 ms (series of 5–7 launches; depends on the phone's load, typically ≈230–450 ms) |
 | first camera frame | ≈2000 ms | 556–1129 ms |
-| APK size (release) | — | ≈105 KB |
+| APK size (release) | — | ≈126 KB |
 
 What remains: after the camera is opened, the Honor 10 driver delivers the first frame only after ≈0.5–1.1 s — this is
 hardware latency, and it can only be hidden by opening early (which is what is done).
 
 **Startup timestamps:** `./gradlew installRelease -PstartupTrace=true`, then `adb logcat -s NSC-Startup` (ms since process
 start), `NSC-Fps` (measured vs. declared frame rate), `NSC-Req` (camera requests). In a normal build they are removed by R8.
-
-> Evaluate speed on a **Release** build: Debug is always much slower.
 
 ## Tap to focus on the Honor 10
 
@@ -115,17 +215,21 @@ region). So for the duration of a touch the app switches to `CONTROL_AF_MODE_AUT
 the Honor 10: different points give different, reproducible lens distances, and the sharpness of the chosen area grows ≈2.2 times.
 Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF state, region in the response, lens distance).
 
-## Build and install
+## Project structure
 
-```
-./gradlew assembleDebug
-./gradlew installRelease      # Release is signed with the debug key (a personal app), so it installs without setting up keys
-```
-
-> **Cyrillic in the Windows user path.** `./gradlew test` fails (`Could not find or load main class worker.org.gradle…`):
-> the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
-> `java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.example.nosleepcam.CameraResolutionTest com.example.nosleepcam.ExposureCompensationTest`
-> (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
+| File | Purpose |
+|---|---|
+| `NoSleepCamApp.kt` | `Application`: camera warm-up before the UI is created |
+| `MainActivity.kt` | the single screen: lifecycle, permission, wiring the camera to the UI |
+| `camera/CameraController.kt` | Camera2: opening, session, zoom, AF, high-speed mode, reconnection |
+| `camera/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
+| `camera/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
+| `camera/ExposureCompensation.kt`, `camera/CameraModels.kt` | "sun" position ↔ EV index and label; models |
+| `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
+| `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt` | controls over the camera; the settings panel |
+| `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
+| `camera/PhotoSaver.kt`, `camera/PhotoMath.kt` | writing to the gallery (MediaStore) and the thumbnail; JPEG orientation, size selection, file name |
+| `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape) |
 
 ## Differences from the MAUI version
 
