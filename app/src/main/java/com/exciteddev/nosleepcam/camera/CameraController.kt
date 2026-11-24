@@ -5,10 +5,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.ImageFormat
-import android.graphics.Rect
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
-import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraConstrainedHighSpeedCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
@@ -17,15 +15,12 @@ import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.camera2.params.MeteringRectangle
-import android.hardware.camera2.params.StreamConfigurationMap
 import android.media.ImageReader
 import android.net.Uri
-import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
 import android.util.Range
-import android.util.Size
 import android.view.Surface
 import com.exciteddev.nosleepcam.AppLanguage
 import com.exciteddev.nosleepcam.Prefs
@@ -101,6 +96,7 @@ internal class CameraController private constructor(
     private val context: Context,
 ) {
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    private val specReader = CameraSpecReader(manager)
     private val thread = HandlerThread("NoSleepCam.Camera").also { it.start() }
     private val handler = Handler(thread.looper)
     private val retryRunnable = Runnable { reconcile() }
@@ -1106,7 +1102,7 @@ internal class CameraController private constructor(
         result: TotalCaptureResult,
     ) = StartupTrace.fps {
         val key = activeResolution?.key ?: "?"
-        val declared = spec?.frameRates?.get(key) ?: 0.0
+        val declared = spec?.frameRates?.get(activeResolution) ?: 0.0
         val exposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
         val frameNs = result.get(CaptureResult.SENSOR_FRAME_DURATION) ?: 0L
         val aeRange = spec?.let { aeFpsRangeFor(it, activeResolution) }
@@ -1152,151 +1148,19 @@ internal class CameraController private constructor(
     // Camera characteristics
     // =====================================================================
 
-    private class CameraSpec(
-        val id: String,
-        val name: String,
-        val isFront: Boolean,
-        val sensorOrientation: Int,
-        val activeArray: SensorRect,
-        /** Maximum digital zoom the camera declares through the standard API. */
-        val declaredMaxZoom: Float,
-        /** Maximum we offer the user (≥ declared); lowered if the camera does not deliver it. */
-        var maxZoom: Float,
-        val afMode: Int,
-        /** The camera supports AUTO mode (needed for real tap focus, see startFocus). */
-        val hasAfAuto: Boolean,
-        val maxAfRegions: Int,
-        val maxAeRegions: Int,
-        val hasFlash: Boolean,
-        /** Range of exposure compensation indices (brightness) and the EV step of one index. */
-        val evMin: Int,
-        val evMax: Int,
-        val evStep: Float,
-        /** The camera is suitable for showing an image (not a depth/IR sensor etc.). */
-        val backwardCompatible: Boolean,
-        val resolutions: List<CameraResolution>,
-        /** Sizes in which the camera delivers JPEG (photos), from the largest. */
-        val jpegSizes: List<CameraResolution>,
-        val frameRates: Map<String, Double>,
-        /** Target frame rate ranges the camera allows for auto-exposure. */
-        val aeFpsRanges: List<Pair<Int, Int>>,
-        /** The camera's high-speed modes (size + rate range), from the largest size; empty — none. */
-        val highSpeedConfigs: List<HighSpeedConfig>,
-        val highSpeedAfMode: Int,
-    ) {
-        /** The device rejected all high-speed modes — we do not offer them any more. */
-        var highSpeedBroken = false
-
-        val supportsHighSpeed: Boolean get() = !highSpeedBroken && highSpeedConfigs.isNotEmpty()
-    }
-
-    /** A camera's high-speed mode: frame size and the allowed rate range (e.g. 1920×1080, [30,120]). */
-    private data class HighSpeedConfig(
-        val size: CameraResolution,
-        val lower: Int,
-        val upper: Int,
-    )
-
     private fun isBack(id: String) = !loadSpec(id).isFront
 
-    private fun loadSpec(id: String): CameraSpec {
-        specs[id]?.let { return it }
+    private fun loadSpec(id: String): CameraSpec = specs[id] ?: specReader.read(id).also { specs[id] = it }
 
-        val ch = manager.getCameraCharacteristics(id)
-
-        val facing = ch.get(CameraCharacteristics.LENS_FACING) ?: -1
-        val orientation = ch.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
-        val maxZoom = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
-        val maxAf = ch.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AF) ?: 0
-        val maxAe = ch.get(CameraCharacteristics.CONTROL_MAX_REGIONS_AE) ?: 0
-        val hasFlash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
-        val active = ch.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) ?: Rect(0, 0, 4000, 3000)
-        val capabilities = ch.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: IntArray(0)
-        val evRange = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
-        val evStep = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
-
-        val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: IntArray(0)
-        val afMode =
-            when {
-                afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-                afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
-                afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO) -> CameraMetadata.CONTROL_AF_MODE_AUTO
-                else -> CameraMetadata.CONTROL_AF_MODE_OFF
-            }
-
-        val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-        val sizes = map?.getOutputSizes(SurfaceTexture::class.java)
-        var resolutions =
-            (sizes ?: emptyArray())
-                .map { CameraResolution(it.width, it.height) }
-                .distinct()
-                .sortedByDescending { it.pixels }
-
-        // Very tiny sizes (QCIF etc.) are of no use to anyone — we drop them if there is something to choose from.
-        val usable = resolutions.filter { it.width >= 320 && it.height >= 240 }
-        if (usable.isNotEmpty()) resolutions = usable
-
-        val aeRanges = readAeFpsRanges(ch)
-
-        val newSpec =
-            CameraSpec(
-                id = id,
-                name =
-                    str(
-                        when (facing) {
-                            CameraMetadata.LENS_FACING_FRONT -> R.string.camera_front
-                            CameraMetadata.LENS_FACING_EXTERNAL -> R.string.camera_external
-                            else -> R.string.camera_back
-                        },
-                    ),
-                isFront = facing == CameraMetadata.LENS_FACING_FRONT,
-                sensorOrientation = orientation,
-                activeArray = active.toSensorRect(),
-                declaredMaxZoom = maxOf(1f, maxZoom),
-                maxZoom =
-                    maxOf(
-                        maxOf(1f, maxZoom),
-                        if (isHuaweiFamily && facing == CameraMetadata.LENS_FACING_BACK) HUAWEI_MAX_ZOOM else 0f,
-                    ),
-                afMode = afMode,
-                hasAfAuto = afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO),
-                maxAfRegions = maxAf,
-                maxAeRegions = maxAe,
-                hasFlash = hasFlash,
-                evMin = evRange?.lower ?: 0,
-                evMax = evRange?.upper ?: 0,
-                evStep = evStep?.toFloat() ?: 0f,
-                backwardCompatible =
-                    capabilities.isEmpty() ||
-                        capabilities.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE),
-                resolutions = resolutions,
-                jpegSizes =
-                    (map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray())
-                        .map { CameraResolution(it.width, it.height) }
-                        .distinct()
-                        .sortedByDescending { it.pixels },
-                frameRates = computeFrameRates(map, sizes, aeRanges.maxOfOrNull { it.second } ?: 0),
-                aeFpsRanges = aeRanges,
-                highSpeedConfigs = readHighSpeedConfigs(capabilities, map),
-                highSpeedAfMode =
-                    if (afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)) {
-                        CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
-                    } else {
-                        afMode
-                    },
-            )
-
-        StartupTrace.req {
-            val comp = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
-            val step = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
-            val aeModes = ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES)?.toList()
-            "spec $id: maxAfRegions=$maxAf maxAeRegions=$maxAe afModes=${afModes.toList()} aeModes=$aeModes " +
-                "aeComp=$comp step=$step hasFlash=$hasFlash activeArray=$active"
-        }
-
-        specs[id] = newSpec
-        return newSpec
-    }
+    /** The user-facing name of a camera ("Back camera"), in the language chosen right now. */
+    private fun nameOf(spec: CameraSpec) =
+        str(
+            when (spec.lens) {
+                LensFacing.Front -> R.string.camera_front
+                LensFacing.External -> R.string.camera_external
+                LensFacing.Back -> R.string.camera_back
+            },
+        )
 
     /** Cameras suitable for showing an image (without depth/IR sensors etc.). */
     private fun listCameras(): List<CameraDescriptor> {
@@ -1320,13 +1184,13 @@ internal class CameraController private constructor(
 
         // If there are several identical cameras, we number them: "Back camera 1", "Back camera 2".
         return usable
-            .groupBy { it.name }
+            .groupBy { nameOf(it) }
             .values
             .flatMap { group ->
                 if (group.size == 1) {
-                    group.map { CameraDescriptor(it.id, it.name) }
+                    group.map { CameraDescriptor(it.id, nameOf(it)) }
                 } else {
-                    group.mapIndexed { i, s -> CameraDescriptor(s.id, str(R.string.camera_numbered, s.name, i + 1)) }
+                    group.mapIndexed { i, s -> CameraDescriptor(s.id, str(R.string.camera_numbered, nameOf(s), i + 1)) }
                 }
             }.sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
     }
@@ -1336,7 +1200,7 @@ internal class CameraController private constructor(
         val cameras = listCameras()
         val highSpeed = if (spec.supportsHighSpeed) resolveHighSpeed(spec) else null
         return CameraCapabilities(
-            camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, spec.name),
+            camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, nameOf(spec)),
             availableCameras = cameras,
             resolutions = spec.resolutions,
             frameRates = spec.frameRates,
@@ -1357,114 +1221,15 @@ internal class CameraController private constructor(
         val spec = spec ?: return null
 
         val candidates = spec.resolutions.filter { (spec.id to it) !in blocked }
-        if (candidates.isEmpty()) return null
-
-        val wanted = wantResolution
-        if (wanted != null && wanted in candidates) return wanted
-
         val sensorAspect = spec.activeArray.width.toDouble() / spec.activeArray.height
-        val balanced = candidates.filter { it.pixels <= DEFAULT_PREVIEW_PIXELS }
-        if (balanced.isEmpty()) return candidates.last() // even the smallest is too big — take the smallest
-
-        val fullFov = balanced.filter { Math.abs(it.width.toDouble() / it.height - sensorAspect) < 0.02 }
-        return (fullFov.ifEmpty { balanced }).maxByOrNull { it.pixels }
+        return CameraSpecRules.pickResolution(candidates, wantResolution, sensorAspect)
     }
 
-    /**
-     * Highest frame rate for each resolution according to the camera: 1 / the minimum frame duration of this size.
-     * Capped by the upper bound of the auto-exposure ranges — the preview will not go higher anyway.
-     */
-    private fun computeFrameRates(
-        map: StreamConfigurationMap?,
-        sizes: Array<Size>?,
-        maxAeFps: Int,
-    ): Map<String, Double> {
-        val rates = HashMap<String, Double>()
-        if (map == null || sizes == null) return rates
-
-        for (size in sizes) {
-            try {
-                val frameNs = map.getOutputMinFrameDuration(SurfaceTexture::class.java, size)
-                if (frameNs <= 0) continue
-
-                var fps = 1e9 / frameNs
-                if (maxAeFps > 0) fps = minOf(fps, maxAeFps.toDouble())
-
-                if (fps >= 1) rates[CameraResolution(size.width, size.height).key] = Math.rint(fps)
-            } catch (ex: Exception) {
-                Log.w(TAG, "Frame duration ${size.width}x${size.height}: ${ex.message}")
-            }
-        }
-
-        return rates
-    }
-
-    /**
-     * High-speed modes of the camera: sizes with a rate above 30 fps (e.g. 1920×1080 and 1280×720 up to 120).
-     * For each, the range with the highest upper bound and the lowest lower bound is taken ([30,120] — in the dark
-     * the camera can lower the rate instead of being left without exposure). Empty if the camera does not declare this mode.
-     */
-    private fun readHighSpeedConfigs(
-        capabilities: IntArray,
-        map: StreamConfigurationMap?,
-    ): List<HighSpeedConfig> {
-        val configs = ArrayList<HighSpeedConfig>()
-        try {
-            if (map == null || !capabilities.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO)) {
-                return configs
-            }
-
-            for (size in map.highSpeedVideoSizes ?: emptyArray()) {
-                var lower = 0
-                var upper = 0
-                for (range in map.getHighSpeedVideoFpsRangesFor(size) ?: emptyArray()) {
-                    val l = range.lower
-                    val u = range.upper
-                    if (u > upper || (u == upper && l < lower)) {
-                        lower = l
-                        upper = u
-                    }
-                }
-
-                if (upper >= 60) configs.add(HighSpeedConfig(CameraResolution(size.width, size.height), lower, upper))
-            }
-        } catch (ex: Exception) {
-            Log.w(TAG, "High-speed configs: ${ex.message}")
-            configs.clear()
-        }
-
-        return configs.sortedByDescending { it.size.pixels }
-    }
-
-    /** Target frame rate ranges allowed by the camera for auto-exposure (empty — unknown). */
-    private fun readAeFpsRanges(ch: CameraCharacteristics): List<Pair<Int, Int>> =
-        try {
-            ch
-                .get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-                ?.map { it.lower to it.upper }
-                ?: emptyList()
-        } catch (ex: Exception) {
-            Log.w(TAG, "AE fps ranges: ${ex.message}")
-            emptyList()
-        }
-
-    /**
-     * Target frame rate range for the chosen resolution: the highest upper bound not greater than the one declared for this
-     * size, and the lowest lower bound among those (in the dark the camera can still lengthen the exposure, as before).
-     */
+    /** Target frame rate range for the chosen resolution (see [CameraSpecRules.aeFpsRange]). */
     private fun aeFpsRangeFor(
         spec: CameraSpec,
         resolution: CameraResolution?,
-    ): Pair<Int, Int>? {
-        if (resolution == null || spec.aeFpsRanges.isEmpty()) return null
-        val cap = spec.frameRates[resolution.key] ?: return null
-
-        val candidates = spec.aeFpsRanges.filter { it.second <= cap.toInt() }
-        if (candidates.isEmpty()) return null
-
-        val upper = candidates.maxOf { it.second }
-        return candidates.filter { it.second == upper }.minByOrNull { it.first }
-    }
+    ) = resolution?.let { CameraSpecRules.aeFpsRange(spec.aeFpsRanges, spec.frameRates[it]) }
 
     private fun raiseStatus(status: String?) = emit { it.onStatus(status) }
 
@@ -1525,29 +1290,12 @@ internal class CameraController private constructor(
         private const val FOCUS_HOLD_MS = 1200L // how long to hold the focus lock after a touch
         private const val FOCUS_TIMEOUT_MS = 4000L // maximum wait for the focus result
         private const val MAX_RETRY_DELAY_MS = 8000L
-        private const val DEFAULT_PREVIEW_PIXELS = 1920L * 1080L
-        private const val FPS_WINDOW_NS = 1_000_000_000L
         private const val CAPABILITIES_FALLBACK_MS = 1500L
         private const val JPEG_QUALITY: Byte = 95
         private const val CAPTURE_WAIT_FOR_FOCUS_MS = 1500L // how long a photo waits for tap focus
 
-        /**
-         * Maximum zoom we offer on the Huawei/Honor back camera. Standard Camera2 declares only 6x there, while the manufacturer's
-         * own camera app has 10x (in the camera characteristics: opticalMaxZoomValue = 10). Verified on the Honor 10: the driver applies
-         * a crop region up to 10x and further (up to ~14x), but at ~16x it HANGS (the camera thread blocks for tens of seconds),
-         * so we do not offer more than 10x. For other manufacturers we keep the declared value: how their drivers behave
-         * beyond it is unknown, and a camera hang is worse than the lack of zoom.
-         */
-        private const val HUAWEI_MAX_ZOOM = 10f
-
         /** If the UI never connected (the process was started not to show the screen) — we do not keep the camera. */
         private const val WARM_UP_TIMEOUT_MS = 15_000L
-
-        private val isHuaweiFamily: Boolean
-            get() =
-                Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true) ||
-                    Build.BRAND.equals("HONOR", ignoreCase = true) ||
-                    Build.MANUFACTURER.equals("HONOR", ignoreCase = true)
 
         // A shared instance for the whole process: the camera can be warmed up even before the UI is created.
         private val sharedLock = Any()

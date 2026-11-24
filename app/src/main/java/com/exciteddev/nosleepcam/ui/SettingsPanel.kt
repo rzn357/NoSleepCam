@@ -99,7 +99,7 @@ class SettingsPanel(
     /** Fills the lists with current data (called on open and when the camera changes). [pageHeight] is in dp. */
     fun bind(
         resolutions: List<CameraResolution>,
-        frameRates: Map<String, Double>?,
+        frameRates: Map<CameraResolution, Double>?,
         selectedResolution: CameraResolution?,
         cameras: List<CameraDescriptor>,
         selectedCameraId: String?,
@@ -151,10 +151,10 @@ class SettingsPanel(
     }
 
     private fun formatFps(
-        frameRates: Map<String, Double>?,
+        frameRates: Map<CameraResolution, Double>?,
         resolution: CameraResolution,
     ): String {
-        val fps = frameRates?.get(resolution.key)
+        val fps = frameRates?.get(resolution)
         return if (fps != null && fps >= 1) context.getString(R.string.fps_format, Math.round(fps).toInt()) else ""
     }
 

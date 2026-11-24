@@ -82,10 +82,10 @@ class CameraCapabilities(
     /** Supported resolutions, from the largest to the smallest. */
     val resolutions: List<CameraResolution>,
     /**
-     * Highest frame rate (fps) for each resolution according to the camera itself; the key is [CameraResolution.key].
+     * Highest frame rate (fps) for each resolution according to the camera itself.
      * If the camera did not report it, there is no entry. This is a ceiling, not a guarantee: in low light auto-exposure lowers the rate.
      */
-    val frameRates: Map<String, Double>,
+    val frameRates: Map<CameraResolution, Double>,
     /** Highest frame rate in high-speed mode (Camera2 constrained high-speed), e.g. 120; 0 — not supported. */
     val highSpeedFps: Int,
     /** Frame size in high-speed mode (the camera allows only a few sizes there). */
