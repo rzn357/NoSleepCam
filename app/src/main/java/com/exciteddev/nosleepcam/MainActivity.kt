@@ -6,8 +6,8 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.RectF
@@ -31,8 +31,8 @@ import com.exciteddev.nosleepcam.camera.CameraPreviewView
 import com.exciteddev.nosleepcam.camera.CameraResolution
 import com.exciteddev.nosleepcam.camera.PhotoSaver
 import com.exciteddev.nosleepcam.camera.PreviewSnapshot
-import com.exciteddev.nosleepcam.ui.CaptureAnimationView
 import com.exciteddev.nosleepcam.ui.CameraOverlay
+import com.exciteddev.nosleepcam.ui.CaptureAnimationView
 import com.exciteddev.nosleepcam.ui.SettingsPanel
 
 /**
@@ -40,7 +40,6 @@ import com.exciteddev.nosleepcam.ui.SettingsPanel
  * The camera keeps running while the app is open; the screen never turns off.
  */
 class MainActivity : Activity() {
-
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var controller: CameraController
     private lateinit var prefs: Prefs
@@ -67,7 +66,7 @@ class MainActivity : Activity() {
 
     private lateinit var previewView: CameraPreviewView
     private var captureAnimation: CaptureAnimationView? = null
-    private var capturing = false             // capture animation in progress — new double taps are ignored
+    private var capturing = false // capture animation in progress — new double taps are ignored
     private var thumbnailBeforeCapture: Bitmap? = null
     private var lastPhotoUri: Uri? = null
 
@@ -76,37 +75,38 @@ class MainActivity : Activity() {
         get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     /** Camera events arrive on a background thread — post them to the UI thread (the order is preserved). */
-    private val cameraListener = object : CameraListener {
-        override fun onCapabilities(capabilities: CameraCapabilities) {
-            ui.post { onCapabilitiesChanged(capabilities) }
-        }
+    private val cameraListener =
+        object : CameraListener {
+            override fun onCapabilities(capabilities: CameraCapabilities) {
+                ui.post { onCapabilitiesChanged(capabilities) }
+            }
 
-        override fun onResolutionApplied(resolution: CameraResolution) {
-            ui.post { handleResolutionApplied(resolution) }
-        }
+            override fun onResolutionApplied(resolution: CameraResolution) {
+                ui.post { handleResolutionApplied(resolution) }
+            }
 
-        override fun onStatus(status: String?) {
-            ui.post { onStatusChanged(status) }
-        }
+            override fun onStatus(status: String?) {
+                ui.post { onStatusChanged(status) }
+            }
 
-        override fun onFrameRate(fps: Int) {
-            ui.post {
-                frameRate = fps
-                overlay?.setFrameRate(fps)
+            override fun onFrameRate(fps: Int) {
+                ui.post {
+                    frameRate = fps
+                    overlay?.setFrameRate(fps)
+                }
+            }
+
+            override fun onPhotoSaved(uri: Uri) {
+                ui.post {
+                    lastPhotoUri = uri
+                    prefs.lastPhoto = uri.toString()
+                }
+            }
+
+            override fun onPhotoFailed() {
+                ui.post { onPhotoFailedOnUi() }
             }
         }
-
-        override fun onPhotoSaved(uri: Uri) {
-            ui.post {
-                lastPhotoUri = uri
-                prefs.lastPhoto = uri.toString()
-            }
-        }
-
-        override fun onPhotoFailed() {
-            ui.post { onPhotoFailedOnUi() }
-        }
-    }
 
     // ------------------------------------------------------------------
     // Lifecycle: the camera runs while the app is open
@@ -272,7 +272,11 @@ class MainActivity : Activity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) startCamera(requestIfNeeded = false)
         // Nothing to do for REQUEST_STORAGE: the user simply repeats the double tap.
@@ -283,7 +287,9 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------
 
     private fun onDoubleTap() {
-        StartupTrace.req { "double tap: capturing=$capturing hs=$highSpeed caps=${capabilities != null} canCapture=${previewView.canCapture}" }
+        StartupTrace.req {
+            "double tap: capturing=$capturing hs=$highSpeed caps=${capabilities != null} canCapture=${previewView.canCapture}"
+        }
         if (isDestroyed || capturing) return
 
         if (highSpeed) {
@@ -296,7 +302,9 @@ class MainActivity : Activity() {
             return
         }
         // Before Android 10, writing to the gallery requires the storage permission.
-        if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT < 29 &&
+            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        ) {
             showTransientStatus(getString(R.string.photo_storage_permission))
             requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE)
             return
@@ -319,21 +327,30 @@ class MainActivity : Activity() {
     }
 
     /** Shutter "blink", then the photo shrinks and flies into the circle in the bottom-left corner. */
-    private fun playCaptureAnimation(snapshot: PreviewSnapshot, target: RectF) {
+    private fun playCaptureAnimation(
+        snapshot: PreviewSnapshot,
+        target: RectF,
+    ) {
         val overlay = overlay ?: return
-        val animation = captureAnimation ?: CaptureAnimationView(this).also {
-            captureAnimation = it
-            // Above the camera and the controls, but below the settings panel.
-            val panel = settingsPanel
-            if (panel != null) root.addView(it, root.indexOfChild(panel)) else root.addView(it)
-        }
+        val animation =
+            captureAnimation ?: CaptureAnimationView(this).also {
+                captureAnimation = it
+                // Above the camera and the controls, but below the settings panel.
+                val panel = settingsPanel
+                if (panel != null) root.addView(it, root.indexOfChild(panel)) else root.addView(it)
+            }
 
         // Thumbnail for the circle: the central square of the photo.
         val inBitmap = snapshot.imageInBitmap
         val side = minOf(inBitmap.width(), inBitmap.height())
-        val square = Bitmap.createBitmap(
-            snapshot.bitmap, inBitmap.centerX() - side / 2, inBitmap.centerY() - side / 2, side, side,
-        )
+        val square =
+            Bitmap.createBitmap(
+                snapshot.bitmap,
+                inBitmap.centerX() - side / 2,
+                inBitmap.centerY() - side / 2,
+                side,
+                side,
+            )
 
         thumbnailBeforeCapture = overlay.thumbnailImage
         animation.play(snapshot.bitmap, snapshot.imageInBitmap, snapshot.imageOnScreen, target) {
@@ -365,9 +382,10 @@ class MainActivity : Activity() {
 
     private fun openLastPhoto() {
         val uri = lastPhotoUri ?: return
-        val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, "image/jpeg")
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val intent =
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "image/jpeg")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         try {
             startActivity(intent)
         } catch (_: ActivityNotFoundException) {
@@ -500,8 +518,15 @@ class MainActivity : Activity() {
 
     private fun refreshSettings() {
         settingsPanel?.bind(
-            resolutions, capabilities?.frameRates, appliedResolution, cameras, selectedCameraId, contentHeightDp(),
-            capabilities?.highSpeedFps ?: 0, capabilities?.highSpeedResolution, highSpeed,
+            resolutions,
+            capabilities?.frameRates,
+            appliedResolution,
+            cameras,
+            selectedCameraId,
+            contentHeightDp(),
+            capabilities?.highSpeedFps ?: 0,
+            capabilities?.highSpeedResolution,
+            highSpeed,
         )
     }
 

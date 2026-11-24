@@ -19,14 +19,19 @@ import com.exciteddev.nosleepcam.camera.CameraDescriptor
 import com.exciteddev.nosleepcam.camera.CameraResolution
 
 /** A resolution list row: frame size and the highest frame rate for it. */
-private class ResolutionItem(val resolution: CameraResolution, val title: String, val fpsText: String)
+private class ResolutionItem(
+    val resolution: CameraResolution,
+    val title: String,
+    val fpsText: String,
+)
 
 /**
  * Settings panel: resolution choice, high-speed mode, (if there are several cameras) camera choice and the app language.
  * Created only on the first tap on the gear — this speeds up startup.
  */
-class SettingsPanel(context: Context) : FrameLayout(context) {
-
+class SettingsPanel(
+    context: Context,
+) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
 
     private val highSpeedBox: View
@@ -72,10 +77,11 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
 
         val accent = resources.getColor(R.color.accent, context.theme)
         highSpeedSwitch.thumbTintList = ColorStateList.valueOf(Color.WHITE)
-        highSpeedSwitch.trackTintList = ColorStateList(
-            arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
-            intArrayOf(accent, Color.argb(0x66, 0xFF, 0xFF, 0xFF)),
-        )
+        highSpeedSwitch.trackTintList =
+            ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(accent, Color.argb(0x66, 0xFF, 0xFF, 0xFF)),
+            )
         highSpeedSwitch.setOnCheckedChangeListener { _, checked ->
             if (!updating) onHighSpeedChanged?.invoke(checked)
         }
@@ -108,11 +114,12 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
             highSpeedBox.visibility = if (highSpeedAvailable) VISIBLE else GONE
             if (highSpeedAvailable) {
                 highSpeedTitle.text = context.getString(R.string.high_speed_title, highSpeedFps)
-                highSpeedHint.text = if (highSpeedResolution != null) {
-                    context.getString(R.string.high_speed_hint_with_frame, highSpeedResolution.width, highSpeedResolution.height)
-                } else {
-                    context.getString(R.string.high_speed_hint)
-                }
+                highSpeedHint.text =
+                    if (highSpeedResolution != null) {
+                        context.getString(R.string.high_speed_hint_with_frame, highSpeedResolution.width, highSpeedResolution.height)
+                    } else {
+                        context.getString(R.string.high_speed_hint)
+                    }
                 highSpeedSwitch.isChecked = highSpeedOn
             }
 
@@ -143,7 +150,10 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
         }
     }
 
-    private fun formatFps(frameRates: Map<String, Double>?, resolution: CameraResolution): String {
+    private fun formatFps(
+        frameRates: Map<String, Double>?,
+        resolution: CameraResolution,
+    ): String {
         val fps = frameRates?.get(resolution.key)
         return if (fps != null && fps >= 1) context.getString(R.string.fps_format, Math.round(fps).toInt()) else ""
     }
@@ -151,7 +161,8 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
     private fun showCameraDialog() {
         if (cameras.isEmpty()) return
 
-        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog
+            .Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.camera_label)
             .setSingleChoiceItems(
                 cameras.map { it.name }.toTypedArray(),
@@ -159,17 +170,16 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
             ) { dialog, which ->
                 dialog.dismiss()
                 onCameraChosen?.invoke(cameras[which])
-            }
-            .show()
+            }.show()
     }
 
     /** The language's own name ("English", "Українська"). */
-    private fun languageName(tag: String): String =
-        AppLanguage.SUPPORTED.firstOrNull { it.first == tag }?.second ?: tag
+    private fun languageName(tag: String): String = AppLanguage.SUPPORTED.firstOrNull { it.first == tag }?.second ?: tag
 
     private fun showLanguageDialog() {
         val tags = AppLanguage.SUPPORTED.map { it.first }
-        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+        AlertDialog
+            .Builder(context, android.R.style.Theme_Material_Dialog_Alert)
             .setTitle(R.string.language_label)
             .setSingleChoiceItems(
                 tags.map { languageName(it) }.toTypedArray(),
@@ -177,8 +187,7 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
             ) { dialog, which ->
                 dialog.dismiss()
                 onLanguageChosen?.invoke(tags[which])
-            }
-            .show()
+            }.show()
     }
 
     private class ResolutionAdapter : BaseAdapter() {
@@ -191,9 +200,14 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
 
         override fun getItemId(position: Int) = position.toLong()
 
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            val row = convertView
-                ?: LayoutInflater.from(parent.context).inflate(R.layout.item_resolution, parent, false)
+        override fun getView(
+            position: Int,
+            convertView: View?,
+            parent: ViewGroup,
+        ): View {
+            val row =
+                convertView
+                    ?: LayoutInflater.from(parent.context).inflate(R.layout.item_resolution, parent, false)
 
             val item = items[position]
             row.findViewById<TextView>(R.id.title).text = item.title

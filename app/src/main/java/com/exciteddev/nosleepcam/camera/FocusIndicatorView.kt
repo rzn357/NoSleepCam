@@ -25,8 +25,9 @@ import kotlin.math.sin
  * The view itself does not handle touches — [CameraPreviewView] does (via [hitSun], [beginDrag], [dragTo], [endDrag]).
  * All sizes in dp are taken from measurements of the Huawei camera on the Honor 10.
  */
-internal class FocusIndicatorView(context: Context) : View(context) {
-
+internal class FocusIndicatorView(
+    context: Context,
+) : View(context) {
     /** The user changed the brightness with the "sun": the new exposure compensation index. */
     var onExposureChanged: ((Int) -> Unit)? = null
 
@@ -37,33 +38,34 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     private val dotPaint = paint(Paint.Style.FILL, 0f)
     private val shadowPaint = paint(Paint.Style.STROKE, 3f).apply { color = Color.argb(70, 0, 0, 0) }
     private val shadowFill = paint(Paint.Style.FILL, 0f).apply { color = Color.argb(70, 0, 0, 0) }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        textSize = LABEL_SIZE * dp
-        color = Color.WHITE
-        setShadowLayer(4f * dp, 0f, 0f, Color.argb(120, 0, 0, 0))
-    }
+    private val textPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            textSize = LABEL_SIZE * dp
+            color = Color.WHITE
+            setShadowLayer(4f * dp, 0f, 0f, Color.argb(120, 0, 0, 0))
+        }
     private val path = Path()
 
     // ---- State ----
     private var centerX = 0f
     private var centerY = 0f
-    private var sunSide = 1f          // +1: "sun" to the right of the square, −1: to the left (when there is no room on the right)
+    private var sunSide = 1f // +1: "sun" to the right of the square, −1: to the left (when there is no room on the right)
     private var status = FocusStatus.Searching
     private var evMin = 0
     private var evMax = 0
     private var evStep = 0f
     private var evIndex = 0
-    private var sunOffset = 0f        // px from the square's centre; positive — down (darker)
+    private var sunOffset = 0f // px from the square's centre; positive — down (darker)
     private var dragStartY = 0f
     private var dragStartOffset = 0f
     private var dragging = false
 
     // ---- Animated values (0…1) ----
-    private var masterAlpha = 0f      // the whole indicator
-    private var squareAlpha = 1f      // the square (hides while the "sun" is dragged)
-    private var lineAlpha = 0f        // the dotted scale
-    private var labelAlpha = 0f       // the EV value: only while the "sun" is dragged
+    private var masterAlpha = 0f // the whole indicator
+    private var squareAlpha = 1f // the square (hides while the "sun" is dragged)
+    private var lineAlpha = 0f // the dotted scale
+    private var labelAlpha = 0f // the EV value: only while the "sun" is dragged
     private var squareScale = 1f
     private val masterTween = Tween()
     private val squareTween = Tween()
@@ -72,7 +74,10 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     private val scaleTween = Tween()
     private val hideRunnable = Runnable { fadeOut() }
 
-    private fun paint(style: Paint.Style, widthDp: Float) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private fun paint(
+        style: Paint.Style,
+        widthDp: Float,
+    ) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.style = style
         strokeWidth = widthDp * dp
         strokeCap = Paint.Cap.ROUND
@@ -100,7 +105,10 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     }
 
     /** Touch at (x, y): show the square (with a short "zoom-in"), reset the brightness. */
-    fun showAt(x: Float, y: Float) {
+    fun showAt(
+        x: Float,
+        y: Float,
+    ) {
         removeCallbacks(hideRunnable)
         dragging = false
         centerX = x
@@ -129,8 +137,10 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     }
 
     /** Whether the touch lands on the "sun" (with a margin for the finger). */
-    fun hitSun(x: Float, y: Float): Boolean =
-        evEnabled && masterAlpha > 0.3f && hypot(x - sunX, y - sunY) <= GRAB_RADIUS * dp
+    fun hitSun(
+        x: Float,
+        y: Float,
+    ): Boolean = evEnabled && masterAlpha > 0.3f && hypot(x - sunX, y - sunY) <= GRAB_RADIUS * dp
 
     fun beginDrag(y: Float) {
         removeCallbacks(hideRunnable)
@@ -191,7 +201,12 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     private inner class Tween {
         private var animator: ValueAnimator? = null
 
-        fun run(from: Float, to: Float, ms: Long, apply: (Float) -> Unit) {
+        fun run(
+            from: Float,
+            to: Float,
+            ms: Long,
+            apply: (Float) -> Unit,
+        ) {
             animator?.cancel()
             if (from == to) {
                 apply(to)
@@ -199,15 +214,16 @@ internal class FocusIndicatorView(context: Context) : View(context) {
                 return
             }
 
-            animator = ValueAnimator.ofFloat(from, to).apply {
-                duration = ms
-                interpolator = DecelerateInterpolator()
-                addUpdateListener {
-                    apply(it.animatedValue as Float)
-                    invalidate()
+            animator =
+                ValueAnimator.ofFloat(from, to).apply {
+                    duration = ms
+                    interpolator = DecelerateInterpolator()
+                    addUpdateListener {
+                        apply(it.animatedValue as Float)
+                        invalidate()
+                    }
+                    start()
                 }
-                start()
-            }
         }
 
         fun cancel() = animator?.cancel()
@@ -245,11 +261,12 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         val half = SQUARE_HALF * dp * squareScale
         val arm = BRACKET_ARM * dp
         val radius = BRACKET_RADIUS * dp
-        val color = when (status) {
-            FocusStatus.Focused -> Color.rgb(0x4C, 0xD9, 0x64)
-            FocusStatus.Failed -> Color.rgb(0xFF, 0x3B, 0x30)
-            else -> Color.WHITE
-        }
+        val color =
+            when (status) {
+                FocusStatus.Focused -> Color.rgb(0x4C, 0xD9, 0x64)
+                FocusStatus.Failed -> Color.rgb(0xFF, 0x3B, 0x30)
+                else -> Color.WHITE
+            }
         bracketPaint.color = color
         bracketPaint.alpha = alpha(squareAlpha)
         shadowPaint.alpha = (70 * masterAlpha * squareAlpha).toInt()
@@ -324,16 +341,16 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     }
 
     private companion object {
-        const val SQUARE_HALF = 40f          // square 80×80 dp
-        const val BRACKET_ARM = 19f          // length of a corner bracket's "arm"
-        const val BRACKET_RADIUS = 4f        // corner rounding
-        const val SUN_DISTANCE = 66.7f       // from the square's centre to the "sun"
+        const val SQUARE_HALF = 40f // square 80×80 dp
+        const val BRACKET_ARM = 19f // length of a corner bracket's "arm"
+        const val BRACKET_RADIUS = 4f // corner rounding
+        const val SUN_DISTANCE = 66.7f // from the square's centre to the "sun"
         const val SUN_CIRCLE = 4.5f
         const val SUN_RAY_FROM = 7.5f
         const val SUN_RAY_TO = 10.5f
         const val SUN_RADIUS = 10.5f
-        const val GRAB_RADIUS = 30f          // zone in which a finger grabs the "sun"
-        const val LINE_HALF_LENGTH = 48f     // dotted scale: ±48 dp from the square's centre
+        const val GRAB_RADIUS = 30f // zone in which a finger grabs the "sun"
+        const val LINE_HALF_LENGTH = 48f // dotted scale: ±48 dp from the square's centre
         const val DOT_SPACING = 5f
         const val DOT_RADIUS = 0.8f
         const val LABEL_SIZE = 36f

@@ -1,15 +1,14 @@
 package com.exciteddev.nosleepcam
 
 import com.exciteddev.nosleepcam.camera.CameraResolution
-import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
+import java.util.Locale
 
 class CameraResolutionTest {
-
     private lateinit var savedLocale: Locale
 
     @Before

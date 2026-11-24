@@ -2,13 +2,12 @@ package com.exciteddev.nosleepcam
 
 import com.exciteddev.nosleepcam.camera.CameraResolution
 import com.exciteddev.nosleepcam.camera.PhotoMath
-import java.util.Calendar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.util.Calendar
 
 class PhotoMathTest {
-
     @Test
     fun backCameraInPortraitUsesTheSensorOrientation() {
         assertEquals(90, PhotoMath.jpegOrientation(sensorOrientation = 90, displayRotation = 0, isFront = false))
@@ -31,20 +30,25 @@ class PhotoMathTest {
 
     @Test
     fun orientationIsAlwaysAMultipleOf90InRange() {
-        for (sensor in intArrayOf(0, 90, 180, 270)) for (rotation in intArrayOf(0, 90, 180, 270)) for (front in booleanArrayOf(false, true)) {
-            val value = PhotoMath.jpegOrientation(sensor, rotation, front)
-            assertEquals(0, value % 90)
-            assert(value in 0..270)
+        for (sensor in intArrayOf(0, 90, 180, 270)) {
+            for (rotation in intArrayOf(0, 90, 180, 270)) {
+                for (front in booleanArrayOf(false, true)) {
+                    val value = PhotoMath.jpegOrientation(sensor, rotation, front)
+                    assertEquals(0, value % 90)
+                    assert(value in 0..270)
+                }
+            }
         }
     }
 
-    private val jpegSizes = listOf(
-        CameraResolution(4608, 3456), // 4:3
-        CameraResolution(4608, 2592), // 16:9
-        CameraResolution(3840, 2160), // 16:9
-        CameraResolution(1920, 1080),
-        CameraResolution(1440, 1080),
-    )
+    private val jpegSizes =
+        listOf(
+            CameraResolution(4608, 3456), // 4:3
+            CameraResolution(4608, 2592), // 16:9
+            CameraResolution(3840, 2160), // 16:9
+            CameraResolution(1920, 1080),
+            CameraResolution(1440, 1080),
+        )
 
     @Test
     fun photoKeepsThePreviewAspectRatio() {

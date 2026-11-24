@@ -2,8 +2,8 @@ package com.exciteddev.nosleepcam.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Color
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Rect
 import android.graphics.RectF
@@ -23,9 +23,11 @@ import com.exciteddev.nosleepcam.StartupTrace
  * Fits the frame into the available area without distortion (with black bars) and rotates
  * it correctly in any screen orientation.
  */
-internal class CameraPreviewView(context: Context) :
-    FrameLayout(context), TextureView.SurfaceTextureListener, CameraListener {
-
+internal class CameraPreviewView(
+    context: Context,
+) : FrameLayout(context),
+    TextureView.SurfaceTextureListener,
+    CameraListener {
     /** The first camera frame is shown (called on the UI thread). */
     var onFirstFrame: (() -> Unit)? = null
 
@@ -101,12 +103,20 @@ internal class CameraPreviewView(context: Context) :
     // TextureView.SurfaceTextureListener
     // ---------------------------------------------------------------------
 
-    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+    override fun onSurfaceTextureAvailable(
+        surface: SurfaceTexture,
+        width: Int,
+        height: Int,
+    ) {
         controller.onSurfaceAvailable(surface)
         updateTransform()
     }
 
-    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) = updateTransform()
+    override fun onSurfaceTextureSizeChanged(
+        surface: SurfaceTexture,
+        width: Int,
+        height: Int,
+    ) = updateTransform()
 
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
         controller.onSurfaceDestroyed(surface)
@@ -141,20 +151,24 @@ internal class CameraPreviewView(context: Context) :
         if (w == 0 || h == 0 || !texture.isAvailable || imageRect.isEmpty) return null
 
         val bitmap = texture.getBitmap((w * SNAPSHOT_SCALE).toInt(), (h * SNAPSHOT_SCALE).toInt()) ?: return null
-        val inBitmap = Rect(
-            Math.round(imageRect.left * SNAPSHOT_SCALE), Math.round(imageRect.top * SNAPSHOT_SCALE),
-            Math.round(imageRect.right * SNAPSHOT_SCALE), Math.round(imageRect.bottom * SNAPSHOT_SCALE),
-        )
+        val inBitmap =
+            Rect(
+                Math.round(imageRect.left * SNAPSHOT_SCALE),
+                Math.round(imageRect.top * SNAPSHOT_SCALE),
+                Math.round(imageRect.right * SNAPSHOT_SCALE),
+                Math.round(imageRect.bottom * SNAPSHOT_SCALE),
+            )
         if (!inBitmap.intersect(0, 0, bitmap.width, bitmap.height) || inBitmap.isEmpty) return null
         return PreviewSnapshot(bitmap, inBitmap, RectF(imageRect))
     }
 
-    private fun displayRotationDegrees(): Int = when (display?.rotation) {
-        Surface.ROTATION_90 -> 90
-        Surface.ROTATION_180 -> 180
-        Surface.ROTATION_270 -> 270
-        else -> 0
-    }
+    private fun displayRotationDegrees(): Int =
+        when (display?.rotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
 
     /**
      * TextureView stretches the image over its whole area, so we build a matrix that:
@@ -211,21 +225,27 @@ internal class CameraPreviewView(context: Context) :
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             // A finger on the brightness "sun" is not a touch for focus but a brightness adjustment.
-            MotionEvent.ACTION_DOWN -> if (indicator.hitSun(event.x, event.y)) {
-                draggingExposure = true
-                indicator.beginDrag(event.y)
-                return true
+            MotionEvent.ACTION_DOWN -> {
+                if (indicator.hitSun(event.x, event.y)) {
+                    draggingExposure = true
+                    indicator.beginDrag(event.y)
+                    return true
+                }
             }
 
-            MotionEvent.ACTION_MOVE -> if (draggingExposure) {
-                indicator.dragTo(event.y)
-                return true
+            MotionEvent.ACTION_MOVE -> {
+                if (draggingExposure) {
+                    indicator.dragTo(event.y)
+                    return true
+                }
             }
 
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (draggingExposure) {
-                draggingExposure = false
-                indicator.endDrag()
-                return true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (draggingExposure) {
+                    draggingExposure = false
+                    indicator.endDrag()
+                    return true
+                }
             }
         }
 
@@ -233,7 +253,10 @@ internal class CameraPreviewView(context: Context) :
         return true
     }
 
-    private fun handleTap(x: Float, y: Float) {
+    private fun handleTap(
+        x: Float,
+        y: Float,
+    ) {
         val geometry = geometry
         if (geometry == null || !geometry.isValid || texture.width == 0 || texture.height == 0) return
 
@@ -272,6 +295,10 @@ internal class CameraPreviewView(context: Context) :
 }
 
 /** Preview snapshot: [bitmap] (downscaled), [imageInBitmap] — the image area within it, [imageOnScreen] — where it is on screen. */
-internal class PreviewSnapshot(val bitmap: Bitmap, val imageInBitmap: Rect, val imageOnScreen: RectF)
+internal class PreviewSnapshot(
+    val bitmap: Bitmap,
+    val imageInBitmap: Rect,
+    val imageOnScreen: RectF,
+)
 
 private const val SNAPSHOT_SCALE = 0.5f

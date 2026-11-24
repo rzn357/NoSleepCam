@@ -20,8 +20,9 @@ import com.exciteddev.nosleepcam.camera.CameraCapabilities
  * Controls over the camera: zoom slider, flash, gear, status and permission request.
  * Contains no camera logic — only display and events (MainActivity holds the logic).
  */
-class CameraOverlay(context: Context) : FrameLayout(context) {
-
+class CameraOverlay(
+    context: Context,
+) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
 
     private val zoomSlider: ZoomSlider
@@ -83,7 +84,10 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     }
 
     /** Applies the camera's capabilities: zoom range and flash availability. */
-    fun setCapabilities(caps: CameraCapabilities, zoom: Double) {
+    fun setCapabilities(
+        caps: CameraCapabilities,
+        zoom: Double,
+    ) {
         zoomSlider.minimumZoom = caps.minZoom
         zoomSlider.maximumZoom = caps.maxZoom
         zoomSlider.value = zoom
@@ -138,13 +142,15 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
 
         // The slider sits near the right edge, below the icon row (frame rate, flash, gear) — they must not
         // overlap. In portrait there is plenty of room; in landscape the slider moves below the icons and, if needed, gets shorter.
-        val track = minOf(
-            minOf(maxOf(pageHeight * TRACK_FRACTION, 140.0), maxOf(140.0, pageHeight * 0.7)),
-            maxOf(MIN_TRACK, pageHeight - BUTTONS_BOTTOM - 2 * inset),
-        )
+        val track =
+            minOf(
+                minOf(maxOf(pageHeight * TRACK_FRACTION, 140.0), maxOf(140.0, pageHeight * 0.7)),
+                maxOf(MIN_TRACK, pageHeight - BUTTONS_BOTTOM - 2 * inset),
+            )
         val viewHeight = track + 2 * inset
-        val top = (pageHeight / 2 - viewHeight / 2)
-            .coerceIn(BUTTONS_BOTTOM, maxOf(BUTTONS_BOTTOM, pageHeight - viewHeight))
+        val top =
+            (pageHeight / 2 - viewHeight / 2)
+                .coerceIn(BUTTONS_BOTTOM, maxOf(BUTTONS_BOTTOM, pageHeight - viewHeight))
 
         val params = zoomSlider.layoutParams as LayoutParams
         params.height = (viewHeight * dp).toInt()
@@ -164,7 +170,10 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     }
 
     /** Photo in the thumbnail circle; null — the circle is hidden. [pop] — a "bounce" when a new photo flies into it. */
-    fun setThumbnail(image: Bitmap?, pop: Boolean = false) {
+    fun setThumbnail(
+        image: Bitmap?,
+        pop: Boolean = false,
+    ) {
         thumbnail.image = image
         if (pop && image != null) thumbnail.pop()
     }
@@ -173,9 +182,16 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
 
     /** Bounds of the circle in this overlay's coordinate system; null — not laid out yet. */
     fun thumbnailBounds(): RectF? =
-        if (width == 0 || thumbnail.width == 0) null else RectF(
-            thumbnail.left.toFloat(), thumbnail.top.toFloat(), thumbnail.right.toFloat(), thumbnail.bottom.toFloat(),
-        )
+        if (width == 0 || thumbnail.width == 0) {
+            null
+        } else {
+            RectF(
+                thumbnail.left.toFloat(),
+                thumbnail.top.toFloat(),
+                thumbnail.right.toFloat(),
+                thumbnail.bottom.toFloat(),
+            )
+        }
 
     /** The circle is needed right now (it is hidden until the first photo, and the animation flies to its future place). */
     fun showThumbnailPlaceholder() {
@@ -185,10 +201,19 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     private fun setTopControlsHidden(hidden: Boolean) {
         topControls.animate().cancel()
         if (hidden) {
-            topControls.animate().alpha(0f).setDuration(150).withEndAction { topControls.visibility = INVISIBLE }.start()
+            topControls
+                .animate()
+                .alpha(0f)
+                .setDuration(150)
+                .withEndAction { topControls.visibility = INVISIBLE }
+                .start()
         } else {
             topControls.visibility = VISIBLE
-            topControls.animate().alpha(1f).setDuration(200).start()
+            topControls
+                .animate()
+                .alpha(1f)
+                .setDuration(200)
+                .start()
         }
     }
 
@@ -207,12 +232,22 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         val token = ++bigLabelToken
         if (show) {
             setBigZoomNumber(ZoomSlider.formatBigNumber(zoomSlider.value))
-            zoomBigLabel.animate().alpha(1f).setDuration(100).start()
+            zoomBigLabel
+                .animate()
+                .alpha(1f)
+                .setDuration(100)
+                .start()
             return
         }
 
         zoomBigLabel.postDelayed({
-            if (token == bigLabelToken) zoomBigLabel.animate().alpha(0f).setDuration(350).start()
+            if (token == bigLabelToken) {
+                zoomBigLabel
+                    .animate()
+                    .alpha(0f)
+                    .setDuration(350)
+                    .start()
+            }
         }, 700)
     }
 }

@@ -5,7 +5,6 @@ import android.content.Context
 import com.exciteddev.nosleepcam.camera.CameraController
 
 class NoSleepCamApp : Application() {
-
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(AppLanguage.wrap(base))
     }

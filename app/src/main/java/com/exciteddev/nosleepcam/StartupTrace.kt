@@ -11,7 +11,6 @@ import android.util.Log
  * To enable: `./gradlew installRelease -PstartupTrace=true`, to watch: `adb logcat -s NSC-Startup`.
  */
 internal object StartupTrace {
-
     inline fun mark(label: () -> String) {
         if (BuildConfig.STARTUP_TRACE) {
             val ms = SystemClock.elapsedRealtime() - Process.getStartElapsedRealtime()

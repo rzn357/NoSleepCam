@@ -21,15 +21,17 @@ import android.view.animation.PathInterpolator
  * Draws only while the animation runs and does not handle touches. The coordinates of [play] are in this view's system
  * (it overlays the preview and the thumbnail).
  */
-class CaptureAnimationView(context: Context) : View(context) {
-
+class CaptureAnimationView(
+    context: Context,
+) : View(context) {
     private val dp = resources.displayMetrics.density
     private val photoPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = 1.5f * dp
-        color = Color.WHITE
-    }
+    private val borderPaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f * dp
+            color = Color.WHITE
+        }
     private val blinkPaint = Paint().apply { color = Color.BLACK }
     private val path = Path()
     private val rect = RectF()
@@ -40,7 +42,7 @@ class CaptureAnimationView(context: Context) : View(context) {
     private val from = RectF()
     private val to = RectF()
     private var flight = 0f // 0 — image in place of the preview, 1 — already in the circle
-    private var blink = 0f  // 0…1…0: "shutter" darkening
+    private var blink = 0f // 0…1…0: "shutter" darkening
     private var blinkAnimator: ValueAnimator? = null
     private var flightAnimator: ValueAnimator? = null
 
@@ -54,7 +56,13 @@ class CaptureAnimationView(context: Context) : View(context) {
      * [fromRect] is where this image is on screen, [toRect] is the bounds of the thumbnail circle. [onEnd] — when the image
      * has arrived (also called on interruption).
      */
-    fun play(image: Bitmap, imageRect: Rect, fromRect: RectF, toRect: RectF, onEnd: () -> Unit) {
+    fun play(
+        image: Bitmap,
+        imageRect: Rect,
+        fromRect: RectF,
+        toRect: RectF,
+        onEnd: () -> Unit,
+    ) {
         cancelRunning()
         bitmap = image
         imageInBitmap.set(imageRect)
@@ -64,39 +72,43 @@ class CaptureAnimationView(context: Context) : View(context) {
         blink = 0f
 
         // "Shutter": a short darkening of the whole screen.
-        blinkAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = (BLINK_MS * timeScale).toLong()
-            addUpdateListener {
-                blink = kotlin.math.sin(Math.PI * (it.animatedValue as Float)).toFloat()
-                invalidate()
+        blinkAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = (BLINK_MS * timeScale).toLong()
+                addUpdateListener {
+                    blink = kotlin.math.sin(Math.PI * (it.animatedValue as Float)).toFloat()
+                    invalidate()
+                }
+                start()
             }
-            start()
-        }
 
         // Flight: after a short pause — shrinking, rounding and moving into the thumbnail.
-        flightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            startDelay = (FLIGHT_DELAY_MS * timeScale).toLong()
-            duration = (FLIGHT_MS * timeScale).toLong()
-            interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
-            addUpdateListener {
-                flight = it.animatedValue as Float
-                invalidate()
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                private var cancelled = false
-
-                override fun onAnimationCancel(animation: Animator) {
-                    cancelled = true
-                }
-
-                override fun onAnimationEnd(animation: Animator) {
-                    bitmap = null
+        flightAnimator =
+            ValueAnimator.ofFloat(0f, 1f).apply {
+                startDelay = (FLIGHT_DELAY_MS * timeScale).toLong()
+                duration = (FLIGHT_MS * timeScale).toLong()
+                interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+                addUpdateListener {
+                    flight = it.animatedValue as Float
                     invalidate()
-                    if (!cancelled) onEnd()
                 }
-            })
-            start()
-        }
+                addListener(
+                    object : AnimatorListenerAdapter() {
+                        private var cancelled = false
+
+                        override fun onAnimationCancel(animation: Animator) {
+                            cancelled = true
+                        }
+
+                        override fun onAnimationEnd(animation: Animator) {
+                            bitmap = null
+                            invalidate()
+                            if (!cancelled) onEnd()
+                        }
+                    },
+                )
+                start()
+            }
         invalidate()
     }
 
@@ -115,8 +127,10 @@ class CaptureAnimationView(context: Context) : View(context) {
 
         // Current frame: from the image on screen to the circle; the corners smoothly round off to half of the shorter side.
         rect.set(
-            lerp(from.left, to.left, flight), lerp(from.top, to.top, flight),
-            lerp(from.right, to.right, flight), lerp(from.bottom, to.bottom, flight),
+            lerp(from.left, to.left, flight),
+            lerp(from.top, to.top, flight),
+            lerp(from.right, to.right, flight),
+            lerp(from.bottom, to.bottom, flight),
         )
         val radius = minOf(rect.width(), rect.height()) / 2f * flight
 
@@ -151,7 +165,11 @@ class CaptureAnimationView(context: Context) : View(context) {
         }
     }
 
-    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+    private fun lerp(
+        a: Float,
+        b: Float,
+        t: Float,
+    ) = a + (b - a) * t
 
     companion object {
         /** Diagnostics only (build with -PstartupTrace=true): slows the animation down to examine it frame by frame. */

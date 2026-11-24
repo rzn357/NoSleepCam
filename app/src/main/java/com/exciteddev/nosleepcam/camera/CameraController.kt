@@ -46,12 +46,10 @@ internal data class PreviewGeometry(
     val sensorOrientation: Int,
     val isFront: Boolean,
     val canFocus: Boolean,
-
     /** Range of exposure compensation indices and the step in EV; evMin == evMax — brightness adjustment is unavailable. */
     val evMin: Int = 0,
     val evMax: Int = 0,
     val evStep: Float = 0f,
-
     /** The session has a JPEG stream for photos (absent in high-speed mode and when the device rejected such a stream). */
     val canCapture: Boolean = false,
 ) {
@@ -72,11 +70,14 @@ internal enum class FocusStatus { Searching, Focused, Failed, Metered }
  */
 internal interface CameraListener {
     fun onCapabilities(capabilities: CameraCapabilities) {}
+
     fun onResolutionApplied(resolution: CameraResolution) {}
+
     fun onGeometry(geometry: PreviewGeometry) {}
 
     /** Status text for the user; null — all is well, the message is hidden. */
     fun onStatus(status: String?) {}
+
     fun onFocus(status: FocusStatus) {}
 
     /** Actual frame rate (fps, integer); 0 — the camera is not running or is being reconfigured. */
@@ -97,8 +98,9 @@ internal interface CameraListener {
  * External methods only remember the "desired state" and call [reconcile],
  * which brings the actual camera state to the desired one — so the order of calls does not matter.
  */
-internal class CameraController private constructor(private val context: Context) {
-
+internal class CameraController private constructor(
+    private val context: Context,
+) {
     private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private val thread = HandlerThread("NoSleepCam.Camera").also { it.start() }
     private val handler = Handler(thread.looper)
@@ -113,11 +115,17 @@ internal class CameraController private constructor(private val context: Context
 
     // ---- Desired state (written from any thread) ----
     @Volatile private var wantActive = false
+
     @Volatile private var wantCameraId: String? = null
+
     @Volatile private var wantResolution: CameraResolution? = null
+
     @Volatile private var wantZoom = 1f
+
     @Volatile private var wantFlash = false
+
     @Volatile private var wantHighSpeed = false
+
     @Volatile private var wantEv = 0 // exposure compensation index (brightness); reset by a new touch
     private val zoomPosted = AtomicBoolean(false)
 
@@ -132,8 +140,8 @@ internal class CameraController private constructor(private val context: Context
     private var opening = false
     private var sessionPending = false
     private var retryDelayMs = 1000L
-    private var activeHighSpeed = false     // the current session is high-speed
-    private var publishedHighSpeed = false  // the mode with which the capabilities were last passed to the UI
+    private var activeHighSpeed = false // the current session is high-speed
+    private var publishedHighSpeed = false // the mode with which the capabilities were last passed to the UI
 
     // ---- Tap to focus (camera thread only) ----
     private enum class FocusPhase { None, Triggering, Searching }
@@ -154,15 +162,16 @@ internal class CameraController private constructor(private val context: Context
     private var lastCapabilities: CameraCapabilities? = null
 
     // ---- Photos: a JPEG stream in the same session as the preview (camera thread only, except savePool) ----
-    private var reader: ImageReader? = null          // stream of the active session
-    private var pendingReader: ImageReader? = null   // stream of the session being configured
+    private var reader: ImageReader? = null // stream of the active session
+    private var pendingReader: ImageReader? = null // stream of the session being configured
     private val blockedStill = HashSet<Pair<String, CameraResolution>>()
     private val savePool = Executors.newSingleThreadExecutor()
     private val stillCallback = StillCb()
-    private var pendingCaptureRotation = -1  // a photo is waiting for focus to finish (−1 — not waiting)
+    private var pendingCaptureRotation = -1 // a photo is waiting for focus to finish (−1 — not waiting)
     private val pendingCaptureRunnable = Runnable { flushPendingCapture() }
-    private var capabilitiesPending = false  // the camera is open, but the capabilities have not yet been passed to the UI
+    private var capabilitiesPending = false // the camera is open, but the capabilities have not yet been passed to the UI
     private val publishPendingRunnable = Runnable { publishPendingCapabilities() }
+
     @Volatile private var uiAttached = false
 
     // =====================================================================
@@ -173,29 +182,34 @@ internal class CameraController private constructor(private val context: Context
      * Subscribes the UI and immediately sends it everything that happened before the subscription
      * (the camera may have opened during warm-up, when there were no subscribers yet).
      */
-    fun addListener(listener: CameraListener) = post {
-        listeners.add(listener)
-        uiAttached = true
+    fun addListener(listener: CameraListener) =
+        post {
+            listeners.add(listener)
+            uiAttached = true
 
-        lastCapabilities?.let { listener.onCapabilities(it) }
+            lastCapabilities?.let { listener.onCapabilities(it) }
 
-        val resolution = activeResolution
-        if (resolution != null) {
-            currentGeometry()?.let { listener.onGeometry(it) }
-            if (!activeHighSpeed) listener.onResolutionApplied(resolution)
+            val resolution = activeResolution
+            if (resolution != null) {
+                currentGeometry()?.let { listener.onGeometry(it) }
+                if (!activeHighSpeed) listener.onResolutionApplied(resolution)
+            }
+
+            if (reportedFps > 0) listener.onFrameRate(reportedFps)
         }
 
-        if (reportedFps > 0) listener.onFrameRate(reportedFps)
-    }
-
     /** A string in the language chosen right now (the application context itself keeps the language of process start). */
-    private fun str(id: Int, vararg args: Any): String = AppLanguage.wrap(context).getString(id, *args)
+    private fun str(
+        id: Int,
+        vararg args: Any,
+    ): String = AppLanguage.wrap(context).getString(id, *args)
 
     /** The app language changed: names built from string resources are stale, so the caches are dropped. */
-    fun onLanguageChanged() = post {
-        specs.clear()
-        lastCapabilities = null
-    }
+    fun onLanguageChanged() =
+        post {
+            specs.clear()
+            lastCapabilities = null
+        }
 
     fun removeListener(listener: CameraListener) {
         listeners.remove(listener)
@@ -256,35 +270,41 @@ internal class CameraController private constructor(private val context: Context
         post(::reconcile)
     }
 
-    fun onSurfaceAvailable(texture: SurfaceTexture) = post {
-        StartupTrace.mark { "TextureView surface ready" }
-        this.texture = texture
-        reconcile()
-    }
-
-    fun onSurfaceDestroyed(texture: SurfaceTexture) = post {
-        if (this.texture === texture) {
-            closeCamera()
-            this.texture = null
+    fun onSurfaceAvailable(texture: SurfaceTexture) =
+        post {
+            StartupTrace.mark { "TextureView surface ready" }
+            this.texture = texture
+            reconcile()
         }
 
-        // The controller releases the texture itself, because we asked the TextureView not to release it:
-        // this guarantees that the camera is closed BEFORE the surface is destroyed.
-        try {
-            texture.release()
-        } catch (ex: Exception) {
-            Log.w(TAG, "Texture release: ${ex.message}")
+    fun onSurfaceDestroyed(texture: SurfaceTexture) =
+        post {
+            if (this.texture === texture) {
+                closeCamera()
+                this.texture = null
+            }
+
+            // The controller releases the texture itself, because we asked the TextureView not to release it:
+            // this guarantees that the camera is closed BEFORE the surface is destroyed.
+            try {
+                texture.release()
+            } catch (ex: Exception) {
+                Log.w(TAG, "Texture release: ${ex.message}")
+            }
         }
-    }
 
     /** Focus at point (s, t) ∈ [0,1]² of the "natural" (as on a phone in portrait) image. */
-    fun focusAt(s: Float, t: Float) = post { startFocus(s, t) }
+    fun focusAt(
+        s: Float,
+        t: Float,
+    ) = post { startFocus(s, t) }
 
-    fun resetFocus() = post {
-        afRegions = null
-        aeRegions = null
-        endFocusLock()
-    }
+    fun resetFocus() =
+        post {
+            afRegions = null
+            aeRegions = null
+            endFocusLock()
+        }
 
     private fun post(action: () -> Unit) {
         handler.post(action)
@@ -416,7 +436,10 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    private fun onCameraOpened(gen: Int, camera: CameraDevice) {
+    private fun onCameraOpened(
+        gen: Int,
+        camera: CameraDevice,
+    ) {
         if (gen != generation) {
             camera.close()
             return
@@ -437,7 +460,11 @@ internal class CameraController private constructor(private val context: Context
         handler.postDelayed(publishPendingRunnable, CAPABILITIES_FALLBACK_MS)
     }
 
-    private fun onCameraLost(gen: Int, camera: CameraDevice, reason: String) {
+    private fun onCameraLost(
+        gen: Int,
+        camera: CameraDevice,
+        reason: String,
+    ) {
         try {
             camera.close()
         } catch (_: Exception) {
@@ -472,14 +499,23 @@ internal class CameraController private constructor(private val context: Context
 
             // Besides the preview, the session has a JPEG stream for photos (the camera delivers a full-size photo from it).
             val still = openStillReader(resolution)
-            device.createCaptureSession(listOfNotNull(newSurface, still?.surface), SessionCb(gen, resolution, false, still != null), handler)
+            device.createCaptureSession(
+                listOfNotNull(newSurface, still?.surface),
+                SessionCb(gen, resolution, false, still != null),
+                handler,
+            )
         } catch (ex: Exception) {
             sessionPending = false
             handleLost("createCaptureSession: ${ex.message}")
         }
     }
 
-    private fun onSessionConfigured(gen: Int, session: CameraCaptureSession, resolution: CameraResolution, highSpeed: Boolean) {
+    private fun onSessionConfigured(
+        gen: Int,
+        session: CameraCaptureSession,
+        resolution: CameraResolution,
+        highSpeed: Boolean,
+    ) {
         if (gen != generation) {
             try {
                 session.close()
@@ -550,7 +586,10 @@ internal class CameraController private constructor(private val context: Context
         // Tap focus in a high-speed session is impossible (it does not accept single requests and triggers).
         // The same goes for brightness: the high-speed request is deliberately minimal, with no exposure compensation.
         return PreviewGeometry(
-            resolution.width, resolution.height, spec.sensorOrientation, spec.isFront,
+            resolution.width,
+            resolution.height,
+            spec.sensorOrientation,
+            spec.isFront,
             spec.afMode != CameraMetadata.CONTROL_AF_MODE_OFF && !activeHighSpeed,
             evMin = if (activeHighSpeed) 0 else spec.evMin,
             evMax = if (activeHighSpeed) 0 else spec.evMax,
@@ -564,7 +603,12 @@ internal class CameraController private constructor(private val context: Context
         emit { it.onGeometry(geometry) }
     }
 
-    private fun onSessionConfigureFailed(gen: Int, resolution: CameraResolution, highSpeed: Boolean, withStill: Boolean) {
+    private fun onSessionConfigureFailed(
+        gen: Int,
+        resolution: CameraResolution,
+        highSpeed: Boolean,
+        withStill: Boolean,
+    ) {
         pendingReader?.close()
         pendingReader = null
         if (gen != generation) return
@@ -605,7 +649,11 @@ internal class CameraController private constructor(private val context: Context
         if (next != null) {
             raiseStatus(
                 str(
-                    R.string.status_resolution_unsupported, resolution.width, resolution.height, next.width, next.height,
+                    R.string.status_resolution_unsupported,
+                    resolution.width,
+                    resolution.height,
+                    next.width,
+                    next.height,
                 ),
             )
         }
@@ -776,7 +824,10 @@ internal class CameraController private constructor(private val context: Context
      * The actually visible part of the sensor: the camera additionally crops the zoom area to the aspect ratio
      * of the stream (e.g. 16:9 from a 4:3 sensor). Needed to map a touch to sensor coordinates accurately.
      */
-    private fun visibleSensorRect(spec: CameraSpec, stream: CameraResolution): Rect {
+    private fun visibleSensorRect(
+        spec: CameraSpec,
+        stream: CameraResolution,
+    ): Rect {
         val crop = cropForZoom(spec)
         val streamAspect = stream.width.toDouble() / stream.height
         val cropAspect = crop.width().toDouble() / crop.height()
@@ -794,7 +845,10 @@ internal class CameraController private constructor(private val context: Context
         return Rect(crop.left, crop.top + dy, crop.right, crop.top + dy + h)
     }
 
-    private fun isVisible(regions: Array<MeteringRectangle>?, crop: Rect): Boolean {
+    private fun isVisible(
+        regions: Array<MeteringRectangle>?,
+        crop: Rect,
+    ): Boolean {
         val rect = regions?.firstOrNull()?.rect ?: return false
         val cx = rect.centerX()
         val cy = rect.centerY()
@@ -824,16 +878,17 @@ internal class CameraController private constructor(private val context: Context
      * [displayRotation] is the current screen rotation (0/90/180/270), which determines how the photo is rotated.
      * The result is [CameraListener.onPhotoSaved] or [CameraListener.onPhotoFailed].
      */
-    fun capturePhoto(displayRotation: Int) = post {
-        if (focusPhase != FocusPhase.None) {
-            // Tap focus (the first tap of a double tap) is still in progress: we wait for the result so that the photo does not come out unfocused.
-            pendingCaptureRotation = displayRotation
-            handler.removeCallbacks(pendingCaptureRunnable)
-            handler.postDelayed(pendingCaptureRunnable, CAPTURE_WAIT_FOR_FOCUS_MS)
-        } else {
-            doCapturePhoto(displayRotation)
+    fun capturePhoto(displayRotation: Int) =
+        post {
+            if (focusPhase != FocusPhase.None) {
+                // Tap focus (the first tap of a double tap) is still in progress: we wait for the result so that the photo does not come out unfocused.
+                pendingCaptureRotation = displayRotation
+                handler.removeCallbacks(pendingCaptureRunnable)
+                handler.postDelayed(pendingCaptureRunnable, CAPTURE_WAIT_FOR_FOCUS_MS)
+            } else {
+                doCapturePhoto(displayRotation)
+            }
         }
-    }
 
     /** Focus finished (or the wait timed out) — we take the photo that was waiting for it. */
     private fun flushPendingCapture() {
@@ -849,7 +904,9 @@ internal class CameraController private constructor(private val context: Context
         val spec = spec
         val session = session
         val reader = reader
-        StartupTrace.req { "capturePhoto: session=${session != null} reader=${reader != null} hs=$activeHighSpeed rotation=$displayRotation" }
+        StartupTrace.req {
+            "capturePhoto: session=${session != null} reader=${reader != null} hs=$activeHighSpeed rotation=$displayRotation"
+        }
         if (spec == null || session == null || reader == null || device == null || activeHighSpeed) {
             emit { it.onPhotoFailed() }
             return
@@ -889,19 +946,21 @@ internal class CameraController private constructor(private val context: Context
 
     /** The JPEG is ready: we take the bytes and hand the gallery write over to a separate thread so as not to block the camera. */
     private fun onStillAvailable(source: ImageReader) {
-        val image = try {
-            source.acquireNextImage()
-        } catch (ex: Exception) {
-            Log.w(TAG, "acquireNextImage: ${ex.message}")
-            null
-        } ?: return
+        val image =
+            try {
+                source.acquireNextImage()
+            } catch (ex: Exception) {
+                Log.w(TAG, "acquireNextImage: ${ex.message}")
+                null
+            } ?: return
 
-        val bytes = try {
-            val buffer = image.planes[0].buffer
-            ByteArray(buffer.remaining()).also { buffer.get(it) }
-        } finally {
-            image.close()
-        }
+        val bytes =
+            try {
+                val buffer = image.planes[0].buffer
+                ByteArray(buffer.remaining()).also { buffer.get(it) }
+            } finally {
+                image.close()
+            }
 
         val takenAt = System.currentTimeMillis()
         StartupTrace.req { "JPEG received: ${bytes.size} bytes" }
@@ -915,7 +974,10 @@ internal class CameraController private constructor(private val context: Context
     // Tap focus
     // =====================================================================
 
-    private fun startFocus(s: Float, t: Float) {
+    private fun startFocus(
+        s: Float,
+        t: Float,
+    ) {
         val spec = spec
         val resolution = activeResolution
         val session = session
@@ -930,12 +992,13 @@ internal class CameraController private constructor(private val context: Context
         // "Natural" coordinates (s,t) → sensor buffer coordinates (rotating back by sensorOrientation).
         val sd = s.toDouble()
         val td = t.toDouble()
-        val (sx, sy) = when (spec.sensorOrientation) {
-            90 -> td to 1 - sd
-            180 -> 1 - sd to 1 - td
-            270 -> 1 - td to sd
-            else -> sd to td
-        }
+        val (sx, sy) =
+            when (spec.sensorOrientation) {
+                90 -> td to 1 - sd
+                180 -> 1 - sd to 1 - td
+                270 -> 1 - td to sd
+                else -> sd to td
+            }
 
         val visible = visibleSensorRect(spec, resolution)
         val px = visible.left + Math.round(sx * visible.width()).toInt()
@@ -1020,7 +1083,10 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    private fun onCaptureCompleted(request: CaptureRequest, result: TotalCaptureResult) {
+    private fun onCaptureCompleted(
+        request: CaptureRequest,
+        result: TotalCaptureResult,
+    ) {
         measureFrameRate(result)
         if (!activeHighSpeed) {
             checkZoomHonored(request, result) // in high-speed mode the crop region may not apply — that is not zoom "clamping"
@@ -1049,7 +1115,10 @@ internal class CameraController private constructor(private val context: Context
     private var traceAfLastState = -1
 
     /** AF diagnostics (tag NSC-Req): state, mode, request trigger, regions in the response, lens distance. */
-    private fun traceAf(request: CaptureRequest, result: TotalCaptureResult) = StartupTrace.req {
+    private fun traceAf(
+        request: CaptureRequest,
+        result: TotalCaptureResult,
+    ) = StartupTrace.req {
         val state = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
         val changed = state != traceAfLastState
         traceAfLastState = state
@@ -1101,7 +1170,10 @@ internal class CameraController private constructor(private val context: Context
         publishFrameRate(0)
     }
 
-    private fun traceFps(fps: Double, result: TotalCaptureResult) = StartupTrace.fps {
+    private fun traceFps(
+        fps: Double,
+        result: TotalCaptureResult,
+    ) = StartupTrace.fps {
         val key = activeResolution?.key ?: "?"
         val declared = spec?.frameRates?.get(key) ?: 0.0
         val exposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
@@ -1120,7 +1192,10 @@ internal class CameraController private constructor(private val context: Context
     // in that case the camera thread blocks inside a driver call, so we do not go beyond the verified limits at all.
     // ---------------------------------------------------------------------
 
-    private fun checkZoomHonored(request: CaptureRequest, result: TotalCaptureResult) {
+    private fun checkZoomHonored(
+        request: CaptureRequest,
+        result: TotalCaptureResult,
+    ) {
         val spec = spec ?: return
         if (spec.maxZoom <= spec.declaredMaxZoom + 0.01f) return // we request within the declared range — nothing to check
 
@@ -1156,37 +1231,28 @@ internal class CameraController private constructor(private val context: Context
         val isFront: Boolean,
         val sensorOrientation: Int,
         val activeArray: Rect,
-
         /** Maximum digital zoom the camera declares through the standard API. */
         val declaredMaxZoom: Float,
-
         /** Maximum we offer the user (≥ declared); lowered if the camera does not deliver it. */
         var maxZoom: Float,
-
         val afMode: Int,
-
         /** The camera supports AUTO mode (needed for real tap focus, see startFocus). */
         val hasAfAuto: Boolean,
         val maxAfRegions: Int,
         val maxAeRegions: Int,
         val hasFlash: Boolean,
-
         /** Range of exposure compensation indices (brightness) and the EV step of one index. */
         val evMin: Int,
         val evMax: Int,
         val evStep: Float,
-
         /** The camera is suitable for showing an image (not a depth/IR sensor etc.). */
         val backwardCompatible: Boolean,
         val resolutions: List<CameraResolution>,
-
         /** Sizes in which the camera delivers JPEG (photos), from the largest. */
         val jpegSizes: List<CameraResolution>,
         val frameRates: Map<String, Double>,
-
         /** Target frame rate ranges the camera allows for auto-exposure. */
         val aeFpsRanges: List<Pair<Int, Int>>,
-
         /** The camera's high-speed modes (size + rate range), from the largest size; empty — none. */
         val highSpeedConfigs: List<HighSpeedConfig>,
         val highSpeedAfMode: Int,
@@ -1198,7 +1264,11 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /** A camera's high-speed mode: frame size and the allowed rate range (e.g. 1920×1080, [30,120]). */
-    private data class HighSpeedConfig(val size: CameraResolution, val lower: Int, val upper: Int)
+    private data class HighSpeedConfig(
+        val size: CameraResolution,
+        val lower: Int,
+        val upper: Int,
+    )
 
     private fun isBack(id: String) = !loadSpec(id).isFront
 
@@ -1219,19 +1289,21 @@ internal class CameraController private constructor(private val context: Context
         val evStep = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_STEP)
 
         val afModes = ch.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES) ?: IntArray(0)
-        val afMode = when {
-            afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE
-            afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
-            afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO) -> CameraMetadata.CONTROL_AF_MODE_AUTO
-            else -> CameraMetadata.CONTROL_AF_MODE_OFF
-        }
+        val afMode =
+            when {
+                afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_PICTURE
+                afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO) -> CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO) -> CameraMetadata.CONTROL_AF_MODE_AUTO
+                else -> CameraMetadata.CONTROL_AF_MODE_OFF
+            }
 
         val map = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
         val sizes = map?.getOutputSizes(SurfaceTexture::class.java)
-        var resolutions = (sizes ?: emptyArray())
-            .map { CameraResolution(it.width, it.height) }
-            .distinct()
-            .sortedByDescending { it.pixels }
+        var resolutions =
+            (sizes ?: emptyArray())
+                .map { CameraResolution(it.width, it.height) }
+                .distinct()
+                .sortedByDescending { it.pixels }
 
         // Very tiny sizes (QCIF etc.) are of no use to anyone — we drop them if there is something to choose from.
         val usable = resolutions.filter { it.width >= 320 && it.height >= 240 }
@@ -1239,44 +1311,53 @@ internal class CameraController private constructor(private val context: Context
 
         val aeRanges = readAeFpsRanges(ch)
 
-        val newSpec = CameraSpec(
-            id = id,
-            name = str(
-                when (facing) {
-                    CameraMetadata.LENS_FACING_FRONT -> R.string.camera_front
-                    CameraMetadata.LENS_FACING_EXTERNAL -> R.string.camera_external
-                    else -> R.string.camera_back
-                },
-            ),
-            isFront = facing == CameraMetadata.LENS_FACING_FRONT,
-            sensorOrientation = orientation,
-            activeArray = active,
-            declaredMaxZoom = maxOf(1f, maxZoom),
-            maxZoom = maxOf(maxOf(1f, maxZoom), if (isHuaweiFamily && facing == CameraMetadata.LENS_FACING_BACK) HUAWEI_MAX_ZOOM else 0f),
-            afMode = afMode,
-            hasAfAuto = afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO),
-            maxAfRegions = maxAf,
-            maxAeRegions = maxAe,
-            hasFlash = hasFlash,
-            evMin = evRange?.lower ?: 0,
-            evMax = evRange?.upper ?: 0,
-            evStep = evStep?.toFloat() ?: 0f,
-            backwardCompatible = capabilities.isEmpty() ||
-                capabilities.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE),
-            resolutions = resolutions,
-            jpegSizes = (map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray())
-                .map { CameraResolution(it.width, it.height) }
-                .distinct()
-                .sortedByDescending { it.pixels },
-            frameRates = computeFrameRates(map, sizes, aeRanges.maxOfOrNull { it.second } ?: 0),
-            aeFpsRanges = aeRanges,
-            highSpeedConfigs = readHighSpeedConfigs(capabilities, map),
-            highSpeedAfMode = if (afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)) {
-                CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
-            } else {
-                afMode
-            },
-        )
+        val newSpec =
+            CameraSpec(
+                id = id,
+                name =
+                    str(
+                        when (facing) {
+                            CameraMetadata.LENS_FACING_FRONT -> R.string.camera_front
+                            CameraMetadata.LENS_FACING_EXTERNAL -> R.string.camera_external
+                            else -> R.string.camera_back
+                        },
+                    ),
+                isFront = facing == CameraMetadata.LENS_FACING_FRONT,
+                sensorOrientation = orientation,
+                activeArray = active,
+                declaredMaxZoom = maxOf(1f, maxZoom),
+                maxZoom =
+                    maxOf(
+                        maxOf(1f, maxZoom),
+                        if (isHuaweiFamily && facing == CameraMetadata.LENS_FACING_BACK) HUAWEI_MAX_ZOOM else 0f,
+                    ),
+                afMode = afMode,
+                hasAfAuto = afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO),
+                maxAfRegions = maxAf,
+                maxAeRegions = maxAe,
+                hasFlash = hasFlash,
+                evMin = evRange?.lower ?: 0,
+                evMax = evRange?.upper ?: 0,
+                evStep = evStep?.toFloat() ?: 0f,
+                backwardCompatible =
+                    capabilities.isEmpty() ||
+                        capabilities.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_BACKWARD_COMPATIBLE),
+                resolutions = resolutions,
+                jpegSizes =
+                    (map?.getOutputSizes(ImageFormat.JPEG) ?: emptyArray())
+                        .map { CameraResolution(it.width, it.height) }
+                        .distinct()
+                        .sortedByDescending { it.pixels },
+                frameRates = computeFrameRates(map, sizes, aeRanges.maxOfOrNull { it.second } ?: 0),
+                aeFpsRanges = aeRanges,
+                highSpeedConfigs = readHighSpeedConfigs(capabilities, map),
+                highSpeedAfMode =
+                    if (afModes.contains(CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO)) {
+                        CameraMetadata.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                    } else {
+                        afMode
+                    },
+            )
 
         StartupTrace.req {
             val comp = ch.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
@@ -1293,12 +1374,13 @@ internal class CameraController private constructor(private val context: Context
     /** Cameras suitable for showing an image (without depth/IR sensors etc.). */
     private fun listCameras(): List<CameraDescriptor> {
         val usable = ArrayList<CameraSpec>()
-        val ids = try {
-            manager.cameraIdList
-        } catch (ex: Exception) {
-            Log.w(TAG, "Camera id list: ${ex.message}")
-            emptyArray()
-        }
+        val ids =
+            try {
+                manager.cameraIdList
+            } catch (ex: Exception) {
+                Log.w(TAG, "Camera id list: ${ex.message}")
+                emptyArray()
+            }
 
         for (id in ids) {
             try {
@@ -1319,8 +1401,7 @@ internal class CameraController private constructor(private val context: Context
                 } else {
                     group.mapIndexed { i, s -> CameraDescriptor(s.id, str(R.string.camera_numbered, s.name, i + 1)) }
                 }
-            }
-            .sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
+            }.sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
     }
 
     private fun buildCapabilities(id: String): CameraCapabilities {
@@ -1366,7 +1447,11 @@ internal class CameraController private constructor(private val context: Context
      * Highest frame rate for each resolution according to the camera: 1 / the minimum frame duration of this size.
      * Capped by the upper bound of the auto-exposure ranges — the preview will not go higher anyway.
      */
-    private fun computeFrameRates(map: StreamConfigurationMap?, sizes: Array<Size>?, maxAeFps: Int): Map<String, Double> {
+    private fun computeFrameRates(
+        map: StreamConfigurationMap?,
+        sizes: Array<Size>?,
+        maxAeFps: Int,
+    ): Map<String, Double> {
         val rates = HashMap<String, Double>()
         if (map == null || sizes == null) return rates
 
@@ -1392,7 +1477,10 @@ internal class CameraController private constructor(private val context: Context
      * For each, the range with the highest upper bound and the lowest lower bound is taken ([30,120] — in the dark
      * the camera can lower the rate instead of being left without exposure). Empty if the camera does not declare this mode.
      */
-    private fun readHighSpeedConfigs(capabilities: IntArray, map: StreamConfigurationMap?): List<HighSpeedConfig> {
+    private fun readHighSpeedConfigs(
+        capabilities: IntArray,
+        map: StreamConfigurationMap?,
+    ): List<HighSpeedConfig> {
         val configs = ArrayList<HighSpeedConfig>()
         try {
             if (map == null || !capabilities.contains(CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO)) {
@@ -1422,20 +1510,25 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /** Target frame rate ranges allowed by the camera for auto-exposure (empty — unknown). */
-    private fun readAeFpsRanges(ch: CameraCharacteristics): List<Pair<Int, Int>> = try {
-        ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
-            ?.map { it.lower to it.upper }
-            ?: emptyList()
-    } catch (ex: Exception) {
-        Log.w(TAG, "AE fps ranges: ${ex.message}")
-        emptyList()
-    }
+    private fun readAeFpsRanges(ch: CameraCharacteristics): List<Pair<Int, Int>> =
+        try {
+            ch
+                .get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                ?.map { it.lower to it.upper }
+                ?: emptyList()
+        } catch (ex: Exception) {
+            Log.w(TAG, "AE fps ranges: ${ex.message}")
+            emptyList()
+        }
 
     /**
      * Target frame rate range for the chosen resolution: the highest upper bound not greater than the one declared for this
      * size, and the lowest lower bound among those (in the dark the camera can still lengthen the exposure, as before).
      */
-    private fun aeFpsRangeFor(spec: CameraSpec, resolution: CameraResolution?): Pair<Int, Int>? {
+    private fun aeFpsRangeFor(
+        spec: CameraSpec,
+        resolution: CameraResolution?,
+    ): Pair<Int, Int>? {
         if (resolution == null || spec.aeFpsRanges.isEmpty()) return null
         val cap = spec.frameRates[resolution.key] ?: return null
 
@@ -1456,12 +1549,17 @@ internal class CameraController private constructor(private val context: Context
     // Camera2 callbacks
     // =====================================================================
 
-    private inner class DeviceCb(private val generation: Int) : CameraDevice.StateCallback() {
+    private inner class DeviceCb(
+        private val generation: Int,
+    ) : CameraDevice.StateCallback() {
         override fun onOpened(camera: CameraDevice) = onCameraOpened(generation, camera)
 
         override fun onDisconnected(camera: CameraDevice) = onCameraLost(generation, camera, "camera disconnected")
 
-        override fun onError(camera: CameraDevice, error: Int) = onCameraLost(generation, camera, "camera error $error")
+        override fun onError(
+            camera: CameraDevice,
+            error: Int,
+        ) = onCameraLost(generation, camera, "camera error $error")
     }
 
     private inner class SessionCb(
@@ -1470,8 +1568,7 @@ internal class CameraController private constructor(private val context: Context
         private val highSpeed: Boolean,
         private val withStill: Boolean,
     ) : CameraCaptureSession.StateCallback() {
-        override fun onConfigured(session: CameraCaptureSession) =
-            onSessionConfigured(generation, session, resolution, highSpeed)
+        override fun onConfigured(session: CameraCaptureSession) = onSessionConfigured(generation, session, resolution, highSpeed)
 
         override fun onConfigureFailed(session: CameraCaptureSession) =
             onSessionConfigureFailed(generation, resolution, highSpeed, withStill)
@@ -1479,20 +1576,27 @@ internal class CameraController private constructor(private val context: Context
 
     /** Result of the photo: success arrives via ImageReader, and here only the error. */
     private inner class StillCb : CameraCaptureSession.CaptureCallback() {
-        override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: android.hardware.camera2.CaptureFailure) {
+        override fun onCaptureFailed(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            failure: android.hardware.camera2.CaptureFailure,
+        ) {
             Log.w(TAG, "Still capture failed: reason ${failure.reason}")
             emit { it.onPhotoFailed() }
         }
     }
 
     private inner class CaptureCb : CameraCaptureSession.CaptureCallback() {
-        override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) =
-            this@CameraController.onCaptureCompleted(request, result)
+        override fun onCaptureCompleted(
+            session: CameraCaptureSession,
+            request: CaptureRequest,
+            result: TotalCaptureResult,
+        ) = this@CameraController.onCaptureCompleted(request, result)
     }
 
     companion object {
-        private const val FOCUS_HOLD_MS = 1200L      // how long to hold the focus lock after a touch
-        private const val FOCUS_TIMEOUT_MS = 4000L   // maximum wait for the focus result
+        private const val FOCUS_HOLD_MS = 1200L // how long to hold the focus lock after a touch
+        private const val FOCUS_TIMEOUT_MS = 4000L // maximum wait for the focus result
         private const val MAX_RETRY_DELAY_MS = 8000L
         private const val DEFAULT_PREVIEW_PIXELS = 1920L * 1080L
         private const val FPS_WINDOW_NS = 1_000_000_000L
@@ -1513,20 +1617,23 @@ internal class CameraController private constructor(private val context: Context
         private const val WARM_UP_TIMEOUT_MS = 15_000L
 
         private val isHuaweiFamily: Boolean
-            get() = Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true) ||
-                Build.BRAND.equals("HONOR", ignoreCase = true) ||
-                Build.MANUFACTURER.equals("HONOR", ignoreCase = true)
+            get() =
+                Build.MANUFACTURER.equals("HUAWEI", ignoreCase = true) ||
+                    Build.BRAND.equals("HONOR", ignoreCase = true) ||
+                    Build.MANUFACTURER.equals("HONOR", ignoreCase = true)
 
         // A shared instance for the whole process: the camera can be warmed up even before the UI is created.
         private val sharedLock = Any()
+
         // The controller holds only the ApplicationContext (see getShared), so there is no activity leak here.
         @SuppressLint("StaticFieldLeak")
         private var shared: CameraController? = null
 
         /** The only controller of the process. The UI connects to it rather than creating its own. */
-        fun getShared(context: Context): CameraController = synchronized(sharedLock) {
-            shared ?: CameraController(context.applicationContext ?: context).also { shared = it }
-        }
+        fun getShared(context: Context): CameraController =
+            synchronized(sharedLock) {
+                shared ?: CameraController(context.applicationContext ?: context).also { shared = it }
+            }
 
         /**
          * Starts opening the camera right at process start — in parallel with the UI creation

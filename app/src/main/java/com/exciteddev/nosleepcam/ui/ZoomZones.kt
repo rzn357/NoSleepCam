@@ -11,7 +11,6 @@ import kotlin.math.abs
  * All values are in dp, relative to the centre of the ring (or of the end dot).
  */
 internal object ZoomZones {
-
     /** Half-width of both zones: 100 px (33 dp) still triggers, 110 px (37 dp) is already focus. */
     const val HALF_WIDTH = 35f
 
@@ -23,13 +22,20 @@ internal object ZoomZones {
     const val PRESET_TOWARD = 14f
 
     /** A touch at [dx], [dy] from the ring centre lands on the ring. */
-    fun hitsRing(dx: Float, dy: Float): Boolean = abs(dx) <= HALF_WIDTH && abs(dy) <= RING_HALF_HEIGHT
+    fun hitsRing(
+        dx: Float,
+        dy: Float,
+    ): Boolean = abs(dx) <= HALF_WIDTH && abs(dy) <= RING_HALF_HEIGHT
 
     /**
      * A touch at [dx], [dy] from the centre of the end dot of the tail. [direction] — where the tail is relative to the ring:
      * −1 — up (zoom below 2x), +1 — down.
      */
-    fun hitsPreset(dx: Float, dy: Float, direction: Float): Boolean {
+    fun hitsPreset(
+        dx: Float,
+        dy: Float,
+        direction: Float,
+    ): Boolean {
         if (abs(dx) > HALF_WIDTH) return false
 
         val away = dy * direction // positive — farther from the ring

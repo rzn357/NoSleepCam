@@ -20,9 +20,11 @@ import android.view.WindowInsetsController
  * systems the runtime does not complain about unknown methods during verification.
  */
 internal object SystemBarInsets {
-
     /** Insets from the system bars. In immersive mode ([immersive]) there are none — the bars are hidden. */
-    fun install(root: View, immersive: () -> Boolean) {
+    fun install(
+        root: View,
+        immersive: () -> Boolean,
+    ) {
         root.setOnApplyWindowInsetsListener { view, insets ->
             when {
                 immersive() -> view.setPadding(0, 0, 0, 0)
@@ -34,7 +36,10 @@ internal object SystemBarInsets {
     }
 
     /** Hides (true) or shows (false) the system bars. */
-    fun setImmersive(window: Window, immersive: Boolean) {
+    fun setImmersive(
+        window: Window,
+        immersive: Boolean,
+    ) {
         if (Build.VERSION.SDK_INT >= 30) {
             Api30.setImmersive(window, immersive)
         } else {
@@ -43,37 +48,52 @@ internal object SystemBarInsets {
     }
 
     @Suppress("DEPRECATION")
-    private fun applyLegacyPadding(view: View, insets: WindowInsets) {
+    private fun applyLegacyPadding(
+        view: View,
+        insets: WindowInsets,
+    ) {
         view.setPadding(
-            insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-            insets.systemWindowInsetRight, insets.systemWindowInsetBottom,
+            insets.systemWindowInsetLeft,
+            insets.systemWindowInsetTop,
+            insets.systemWindowInsetRight,
+            insets.systemWindowInsetBottom,
         )
     }
 
     @Suppress("DEPRECATION")
-    private fun applyLegacyImmersive(window: Window, immersive: Boolean) {
-        window.decorView.systemUiVisibility = if (immersive) {
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        } else {
-            View.SYSTEM_UI_FLAG_VISIBLE
-        }
+    private fun applyLegacyImmersive(
+        window: Window,
+        immersive: Boolean,
+    ) {
+        window.decorView.systemUiVisibility =
+            if (immersive) {
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            } else {
+                View.SYSTEM_UI_FLAG_VISIBLE
+            }
     }
 
     // We don't pull in @RequiresApi from AndroidX (the app has no AndroidX), so we use the framework @TargetApi.
     @SuppressLint("UseRequiresApi")
     @TargetApi(Build.VERSION_CODES.R)
     private object Api30 {
-        fun applyPadding(view: View, insets: WindowInsets) {
+        fun applyPadding(
+            view: View,
+            insets: WindowInsets,
+        ) {
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
         }
 
-        fun setImmersive(window: Window, immersive: Boolean) {
+        fun setImmersive(
+            window: Window,
+            immersive: Boolean,
+        ) {
             val controller = window.insetsController ?: return
             if (immersive) {
                 controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE

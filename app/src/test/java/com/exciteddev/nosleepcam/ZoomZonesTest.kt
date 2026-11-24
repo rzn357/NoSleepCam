@@ -10,7 +10,6 @@ import org.junit.Test
  * The test pins exactly the measured points: where Huawei opens the scale or jumps via the dot, and where it starts focus.
  */
 class ZoomZonesTest {
-
     private fun px(value: Int) = value / 3f
 
     @Test
@@ -39,8 +38,8 @@ class ZoomZonesTest {
     fun presetDotAboveTheRingJumpsOnAndAroundIt() {
         val up = -1f // dotted tail up from the ring: at low zoom
         assertTrue(ZoomZones.hitsPreset(0f, 0f, up))
-        assertTrue(ZoomZones.hitsPreset(0f, px(-60), up))   // 60 px farther from the ring — still a jump
-        assertTrue(ZoomZones.hitsPreset(0f, px(30), up))    // 30 px toward the ring — still a jump
+        assertTrue(ZoomZones.hitsPreset(0f, px(-60), up)) // 60 px farther from the ring — still a jump
+        assertTrue(ZoomZones.hitsPreset(0f, px(30), up)) // 30 px toward the ring — still a jump
         assertTrue(ZoomZones.hitsPreset(px(100), 0f, up))
         assertTrue(ZoomZones.hitsPreset(px(-60), 0f, up))
     }
@@ -48,7 +47,7 @@ class ZoomZonesTest {
     @Test
     fun presetDotZoneEnds() {
         val up = -1f
-        assertFalse(ZoomZones.hitsPreset(0f, px(60), up))   // 60 px toward the ring: nothing in Huawei
+        assertFalse(ZoomZones.hitsPreset(0f, px(60), up)) // 60 px toward the ring: nothing in Huawei
         assertFalse(ZoomZones.hitsPreset(px(-110), 0f, up)) // in Huawei: focus
         assertFalse(ZoomZones.hitsPreset(0f, px(-120), up))
     }

@@ -15,7 +15,6 @@ import java.util.Locale
  * With the system choice nothing is wrapped, so startup costs nothing extra.
  */
 internal object AppLanguage {
-
     /** Languages the app is translated into: language tag → name in its own language. */
     val SUPPORTED: List<Pair<String, String>> = listOf("en" to "English", "uk" to "Українська")
 
