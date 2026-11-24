@@ -34,7 +34,9 @@ import com.exciteddev.nosleepcam.camera.PhotoSaver
 import com.exciteddev.nosleepcam.camera.PreviewSnapshot
 import com.exciteddev.nosleepcam.ui.CameraOverlay
 import com.exciteddev.nosleepcam.ui.CaptureAnimationView
+import com.exciteddev.nosleepcam.ui.HighSpeedState
 import com.exciteddev.nosleepcam.ui.SettingsPanel
+import com.exciteddev.nosleepcam.ui.SettingsUiState
 import com.exciteddev.nosleepcam.ui.message
 
 /**
@@ -51,8 +53,6 @@ class MainActivity : Activity() {
     private var overlay: CameraOverlay? = null
     private var settingsPanel: SettingsPanel? = null
 
-    private var resolutions: List<CameraResolution> = emptyList()
-    private var cameras: List<CameraDescriptor> = emptyList()
     private var appliedResolution: CameraResolution? = null
     private var capabilities: CameraCapabilities? = null
     private var selectedCameraId: String? = null
@@ -134,7 +134,7 @@ class MainActivity : Activity() {
         // Diagnostics: `am start --ef nsc_slow 10` slows the capture animation down 10 times (trace builds only).
         if (BuildConfig.STARTUP_TRACE) CaptureAnimationView.timeScale = intent.getFloatExtra("nsc_slow", 1f)
 
-        previewView = CameraPreviewView(this)
+        previewView = CameraPreviewView(this, controller)
         previewView.onFirstFrame = { ensureOverlay() }
         previewView.onDoubleTapped = ::onDoubleTap
         root.addView(previewView, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
@@ -294,22 +294,33 @@ class MainActivity : Activity() {
         }
         if (isDestroyed || capturing) return
 
-        if (highSpeed) {
-            showTransientStatus(getString(R.string.photo_unavailable_high_speed))
-            return
-        }
-        if (capabilities == null) return // the camera is not ready yet
-        if (!previewView.canCapture) {
-            showTransientStatus(getString(R.string.photo_unavailable))
-            return
-        }
-        // Before Android 10, writing to the gallery requires the storage permission.
-        if (Build.VERSION.SDK_INT < 29 &&
-            checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-        ) {
-            showTransientStatus(getString(R.string.photo_storage_permission))
-            requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE)
-            return
+        val needsStoragePermission =
+            Build.VERSION.SDK_INT < 29 &&
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+        when (ControlRules.photoRequest(highSpeed, capabilities != null, previewView.canCapture, needsStoragePermission)) {
+            ControlRules.PhotoRequest.Take -> {
+                Unit
+            }
+
+            ControlRules.PhotoRequest.CameraNotReady -> {
+                return
+            }
+
+            ControlRules.PhotoRequest.HighSpeed -> {
+                showTransientStatus(getString(R.string.photo_unavailable_high_speed))
+                return
+            }
+
+            ControlRules.PhotoRequest.Unavailable -> {
+                showTransientStatus(getString(R.string.photo_unavailable))
+                return
+            }
+
+            ControlRules.PhotoRequest.NeedsStoragePermission -> {
+                showTransientStatus(getString(R.string.photo_storage_permission))
+                requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE)
+                return
+            }
         }
 
         // The thumbnail circle must be laid out to know where to fly; a freshly created overlay gets laid out on the next frame.
@@ -408,8 +419,6 @@ class MainActivity : Activity() {
         if (isDestroyed) return
 
         capabilities = caps
-        resolutions = caps.resolutions
-        cameras = caps.availableCameras
         selectedCameraId = caps.camera.id
         controller.setCameraId(caps.camera.id)
 
@@ -419,9 +428,6 @@ class MainActivity : Activity() {
             controller.setHighSpeed(false)
             overlay?.setHighSpeed(false)
         }
-
-        // Remember the camera we work with, so that the next launch restores it and the resolution chosen for it.
-        prefs.cameraId = caps.camera.id
 
         // Zoom: from 1x to the camera's hardware maximum.
         val zoom = zoomFactor.coerceIn(caps.minZoom, maxOf(caps.minZoom, caps.maxZoom))
@@ -459,20 +465,22 @@ class MainActivity : Activity() {
     // ------------------------------------------------------------------
 
     private fun onFlashClicked() {
-        // The icon is always visible; if this camera has no flash, explain why nothing happened.
-        if (capabilities?.supportsFlash == false) {
-            showTransientStatus(getString(R.string.flash_unavailable))
-            return
-        }
+        // The icon is always visible; if the flash cannot be used, explain why nothing happened.
+        when (ControlRules.flashClick(capabilities?.supportsFlash, highSpeed)) {
+            ControlRules.FlashClick.NoFlash -> {
+                showTransientStatus(getString(R.string.flash_unavailable))
+            }
 
-        if (highSpeed) {
-            showTransientStatus(getString(R.string.flash_unavailable_high_speed))
-            return
-        }
+            ControlRules.FlashClick.HighSpeed -> {
+                showTransientStatus(getString(R.string.flash_unavailable_high_speed))
+            }
 
-        flashOn = !flashOn
-        controller.setFlash(flashOn)
-        overlay?.setFlash(flashOn)
+            ControlRules.FlashClick.Toggle -> {
+                flashOn = !flashOn
+                controller.setFlash(flashOn)
+                overlay?.setFlash(flashOn)
+            }
+        }
     }
 
     /** Short message for 2 seconds; then the normal state returns. */
@@ -519,16 +527,20 @@ class MainActivity : Activity() {
     }
 
     private fun refreshSettings() {
+        val caps = capabilities
         settingsPanel?.bind(
-            resolutions,
-            capabilities?.frameRates,
-            appliedResolution,
-            cameras,
-            selectedCameraId,
-            contentHeightDp(),
-            capabilities?.highSpeedFps ?: 0,
-            capabilities?.highSpeedResolution,
-            highSpeed,
+            SettingsUiState(
+                resolutions = caps?.resolutions.orEmpty(),
+                frameRates = caps?.frameRates.orEmpty(),
+                selectedResolution = appliedResolution,
+                cameras = caps?.availableCameras.orEmpty(),
+                selectedCameraId = selectedCameraId,
+                pageHeightDp = contentHeightDp(),
+                highSpeed =
+                    caps
+                        ?.takeIf { it.highSpeedFps > 0 }
+                        ?.let { HighSpeedState(it.highSpeedFps, it.highSpeedResolution, highSpeed) },
+            ),
         )
     }
 
@@ -565,7 +577,6 @@ class MainActivity : Activity() {
     private fun onCameraChosen(camera: CameraDescriptor) {
         if (camera.id == selectedCameraId) return
 
-        prefs.cameraId = camera.id
         selectedCameraId = camera.id
 
         // Recall the last resolution chosen for this very camera (or null — it will be picked automatically).

@@ -17,6 +17,27 @@ import com.exciteddev.nosleepcam.AppLanguage
 import com.exciteddev.nosleepcam.R
 import com.exciteddev.nosleepcam.camera.CameraDescriptor
 import com.exciteddev.nosleepcam.camera.CameraResolution
+import kotlin.math.roundToInt
+
+/** High-speed mode as the settings panel shows it; absent from [SettingsUiState] when the camera has none. */
+data class HighSpeedState(
+    val fps: Int,
+    /** The frame size the camera dictates in this mode, if known. */
+    val resolution: CameraResolution?,
+    val enabled: Boolean,
+)
+
+/** Everything the settings panel shows; the activity builds a new one whenever something changes. */
+data class SettingsUiState(
+    val resolutions: List<CameraResolution>,
+    val frameRates: Map<CameraResolution, Double>,
+    val selectedResolution: CameraResolution?,
+    val cameras: List<CameraDescriptor>,
+    val selectedCameraId: String?,
+    /** Height of the content area in dp, used to size the resolution list. */
+    val pageHeightDp: Double,
+    val highSpeed: HighSpeedState?,
+)
 
 /** A resolution list row: frame size and the highest frame rate for it. */
 private class ResolutionItem(
@@ -97,22 +118,18 @@ class SettingsPanel(
     }
 
     /** Fills the lists with current data (called on open and when the camera changes). [pageHeight] is in dp. */
-    fun bind(
-        resolutions: List<CameraResolution>,
-        frameRates: Map<CameraResolution, Double>?,
-        selectedResolution: CameraResolution?,
-        cameras: List<CameraDescriptor>,
-        selectedCameraId: String?,
-        pageHeight: Double,
-        highSpeedFps: Int,
-        highSpeedResolution: CameraResolution?,
-        highSpeedOn: Boolean,
-    ) {
+    fun bind(state: SettingsUiState) {
+        val resolutions = state.resolutions
+        val cameras = state.cameras
+        val selectedCameraId = state.selectedCameraId
+        val highSpeedAvailable = state.highSpeed != null
+        val highSpeedOn = state.highSpeed?.enabled == true
         updating = true
         try {
-            val highSpeedAvailable = highSpeedFps > 0
             highSpeedBox.visibility = if (highSpeedAvailable) VISIBLE else GONE
-            if (highSpeedAvailable) {
+            if (state.highSpeed != null) {
+                val highSpeedFps = state.highSpeed.fps
+                val highSpeedResolution = state.highSpeed.resolution
                 highSpeedTitle.text = context.getString(R.string.high_speed_title, highSpeedFps)
                 highSpeedHint.text =
                     if (highSpeedResolution != null) {
@@ -120,7 +137,7 @@ class SettingsPanel(
                     } else {
                         context.getString(R.string.high_speed_hint)
                     }
-                highSpeedSwitch.isChecked = highSpeedOn
+                highSpeedSwitch.isChecked = state.highSpeed.enabled
             }
 
             // In this mode the frame size is dictated by the camera — resolution choice is disabled.
@@ -131,13 +148,13 @@ class SettingsPanel(
             // List height: all items, but no more than ~55% of the screen height (scrolling beyond that).
             // The high-speed row takes ~100 dp and the language row ~60 dp, so the list gets shorter so that the camera
             // and language pickers do not go off screen.
-            val maxHeight = maxOf(ROW_HEIGHT_DP * 3, pageHeight * 0.55 - (if (highSpeedAvailable) 110 else 0) - 60)
+            val maxHeight = maxOf(ROW_HEIGHT_DP * 3, state.pageHeightDp * 0.55 - (if (highSpeedAvailable) 110 else 0) - 60)
             val listHeight = minOf(resolutions.size * ROW_HEIGHT_DP, maxHeight)
             resolutionList.layoutParams = resolutionList.layoutParams.apply { height = (listHeight * dp).toInt() }
 
             val megapixelUnit = context.getString(R.string.megapixels_unit)
-            adapter.items = resolutions.map { ResolutionItem(it, it.displayName(megapixelUnit), formatFps(frameRates, it)) }
-            adapter.selected = adapter.items.indexOfFirst { it.resolution == selectedResolution }
+            adapter.items = resolutions.map { ResolutionItem(it, it.displayName(megapixelUnit), formatFps(state.frameRates, it)) }
+            adapter.selected = adapter.items.indexOfFirst { it.resolution == state.selectedResolution }
             adapter.notifyDataSetChanged()
 
             this.cameras = cameras
@@ -151,11 +168,11 @@ class SettingsPanel(
     }
 
     private fun formatFps(
-        frameRates: Map<CameraResolution, Double>?,
+        frameRates: Map<CameraResolution, Double>,
         resolution: CameraResolution,
     ): String {
-        val fps = frameRates?.get(resolution)
-        return if (fps != null && fps >= 1) context.getString(R.string.fps_format, Math.round(fps).toInt()) else ""
+        val fps = frameRates[resolution]
+        return if (fps != null && fps >= 1) context.getString(R.string.fps_format, fps.roundToInt()) else ""
     }
 
     private fun showCameraDialog() {

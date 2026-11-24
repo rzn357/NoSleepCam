@@ -4,6 +4,7 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
+import kotlin.math.abs
 
 /** Formats a number with a pattern (e.g. "0.#") using the device language's separator; the midpoint rounds up, as in .NET. */
 internal fun formatNumber(
@@ -29,7 +30,7 @@ data class CameraResolution(
 
             val ratio = maxOf(width, height).toDouble() / minOf(width, height)
             for ((known, label) in KNOWN_ASPECTS) {
-                if (Math.abs(ratio - known) < 0.02) return label
+                if (abs(ratio - known) < 0.02) return label
             }
             return formatNumber(ratio, "0.##") + ":1"
         }

@@ -17,14 +17,21 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import com.exciteddev.nosleepcam.StartupTrace
+import kotlin.math.roundToInt
 
 /**
  * Native view: a TextureView with the camera preview + the focus ring.
  * Fits the frame into the available area without distortion (with black bars) and rotates
  * it correctly in any screen orientation.
+ *
+ * Created only from code (never inflated from XML), hence no (Context, AttributeSet) constructor.
+ *
+ * @param controller the process-wide camera controller (the camera may have been warmed up before this view was created)
  */
+@SuppressLint("ViewConstructor")
 internal class CameraPreviewView(
     context: Context,
+    private val controller: CameraController,
 ) : FrameLayout(context),
     TextureView.SurfaceTextureListener,
     CameraListener {
@@ -34,8 +41,6 @@ internal class CameraPreviewView(
     /** Double tap on the screen — photo (the first tap starts focusing immediately, like a regular tap). */
     var onDoubleTapped: (() -> Unit)? = null
 
-    // The controller is shared by the whole process: the camera may have been warmed up before this view was created.
-    private val controller = CameraController.getShared(context)
     private val texture = TextureView(context)
     private val indicator: FocusIndicatorView
     private val gestures: GestureDetector
@@ -153,10 +158,10 @@ internal class CameraPreviewView(
         val bitmap = texture.getBitmap((w * SNAPSHOT_SCALE).toInt(), (h * SNAPSHOT_SCALE).toInt()) ?: return null
         val inBitmap =
             Rect(
-                Math.round(imageRect.left * SNAPSHOT_SCALE),
-                Math.round(imageRect.top * SNAPSHOT_SCALE),
-                Math.round(imageRect.right * SNAPSHOT_SCALE),
-                Math.round(imageRect.bottom * SNAPSHOT_SCALE),
+                (imageRect.left * SNAPSHOT_SCALE).roundToInt(),
+                (imageRect.top * SNAPSHOT_SCALE).roundToInt(),
+                (imageRect.right * SNAPSHOT_SCALE).roundToInt(),
+                (imageRect.bottom * SNAPSHOT_SCALE).roundToInt(),
             )
         if (!inBitmap.intersect(0, 0, bitmap.width, bitmap.height) || inBitmap.isEmpty) return null
         return PreviewSnapshot(bitmap, inBitmap, RectF(imageRect))

@@ -13,6 +13,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.view.View
 import android.view.animation.PathInterpolator
+import kotlin.math.PI
+import kotlin.math.sin
 
 /**
  * Capture animation: the screen "blinks" like a shutter, and the frozen image shrinks, rounds off and flies into the circle
@@ -76,7 +78,7 @@ class CaptureAnimationView(
             ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = (BLINK_MS * timeScale).toLong()
                 addUpdateListener {
-                    blink = kotlin.math.sin(Math.PI * (it.animatedValue as Float)).toFloat()
+                    blink = sin(PI * (it.animatedValue as Float)).toFloat()
                     invalidate()
                 }
                 start()

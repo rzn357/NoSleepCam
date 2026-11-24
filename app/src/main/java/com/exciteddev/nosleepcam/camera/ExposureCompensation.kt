@@ -1,6 +1,7 @@
 package com.exciteddev.nosleepcam.camera
 
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Brightness (exposure compensation): converts the "sun" position to a Camera2 index and a value label.
@@ -18,7 +19,7 @@ internal object ExposureCompensation {
     ): Int {
         val f = fraction.coerceIn(-1f, 1f)
         val scaled = if (f >= 0f) f * evMax else f * -evMin
-        return Math.round(abs(scaled)) * (if (scaled < 0f) -1 else 1)
+        return abs(scaled).roundToInt() * (if (scaled < 0f) -1 else 1)
     }
 
     /** Inverse of [indexFor]: index → position in [−1, 1]. */

@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.view.View
 import android.view.animation.DecelerateInterpolator
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -300,7 +301,7 @@ internal class FocusIndicatorView(
         canvas.drawCircle(x, y, inner, shadowPaint)
         canvas.drawCircle(x, y, inner, sunPaint)
         for (i in 0 until 8) {
-            val angle = Math.PI / 4 * i
+            val angle = PI / 4 * i
             val dx = cos(angle).toFloat()
             val dy = sin(angle).toFloat()
             canvas.drawLine(x + dx * rayFrom, y + dy * rayFrom, x + dx * rayTo, y + dy * rayTo, shadowPaint)
