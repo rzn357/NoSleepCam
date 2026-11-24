@@ -3,12 +3,12 @@
 
     <uses-permission android:name="android.permission.CAMERA" />
 
-    <!-- Лише для Android 9 і старіших: знімки пишуться у папку DCIM/Camera. З Android 10 це робиться через MediaStore без дозволів. -->
+    <!-- Android 9 and older only: photos are written to the DCIM/Camera folder. From Android 10 this is done via MediaStore without permissions. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- Камера не обов'язкова для встановлення; автофокус теж (на пристроях без нього додаток працює з фіксованим фокусом). -->
+    <!-- A camera is not required for installation; neither is autofocus (on devices without it the app works with a fixed focus). -->
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -27,7 +27,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.NoSleepCam">
 
-        <!-- configChanges: поворот екрана не перестворює активність, тож камера не перевідкривається. -->
+        <!-- configChanges: screen rotation does not recreate the activity, so the camera is not reopened. -->
         <activity
             android:name=".MainActivity"
             android:configChanges="screenSize|orientation|uiMode|screenLayout|smallestScreenSize|density"

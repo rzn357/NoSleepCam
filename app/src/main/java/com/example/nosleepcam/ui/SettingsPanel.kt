@@ -13,16 +13,17 @@ import android.widget.FrameLayout
 import android.widget.ListView
 import android.widget.Switch
 import android.widget.TextView
+import com.example.nosleepcam.AppLanguage
 import com.example.nosleepcam.R
 import com.example.nosleepcam.camera.CameraDescriptor
 import com.example.nosleepcam.camera.CameraResolution
 
-/** Рядок списку роздільностей: розмір кадру й найбільша частота кадрів для нього. */
+/** A resolution list row: frame size and the highest frame rate for it. */
 private class ResolutionItem(val resolution: CameraResolution, val title: String, val fpsText: String)
 
 /**
- * Вікно налаштувань: вибір роздільної здатності, високошвидкісний режим і (якщо камер кілька) вибір камери.
- * Створюється лише при першому натисканні на шестерню — це прискорює запуск.
+ * Settings panel: resolution choice, high-speed mode, (if there are several cameras) camera choice and the app language.
+ * Created only on the first tap on the gear — this speeds up startup.
  */
 class SettingsPanel(context: Context) : FrameLayout(context) {
 
@@ -35,6 +36,7 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
     private val resolutionList: ListView
     private val cameraBox: View
     private val cameraPicker: TextView
+    private val languagePicker: TextView
     private val adapter = ResolutionAdapter()
 
     private var cameras: List<CameraDescriptor> = emptyList()
@@ -46,7 +48,10 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
     var onResolutionChosen: ((CameraResolution) -> Unit)? = null
     var onCameraChosen: ((CameraDescriptor) -> Unit)? = null
 
-    /** Користувач увімкнув або вимкнув високошвидкісний режим. */
+    /** The user picked a language: its tag ("en", "uk"). */
+    var onLanguageChosen: ((String) -> Unit)? = null
+
+    /** The user turned high-speed mode on or off. */
     var onHighSpeedChanged: ((Boolean) -> Unit)? = null
 
     init {
@@ -63,6 +68,7 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
         resolutionList = findViewById(R.id.resolution_list)
         cameraBox = findViewById(R.id.camera_box)
         cameraPicker = findViewById(R.id.camera_picker)
+        languagePicker = findViewById(R.id.language_picker)
 
         val accent = resources.getColor(R.color.accent, context.theme)
         highSpeedSwitch.thumbTintList = ColorStateList.valueOf(Color.WHITE)
@@ -81,9 +87,10 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
         }
 
         cameraPicker.setOnClickListener { showCameraDialog() }
+        languagePicker.setOnClickListener { showLanguageDialog() }
     }
 
-    /** Заповнює списки поточними даними (викликається при відкритті та при зміні камери). [pageHeight] — у dp. */
+    /** Fills the lists with current data (called on open and when the camera changes). [pageHeight] is in dp. */
     fun bind(
         resolutions: List<CameraResolution>,
         frameRates: Map<String, Double>?,
@@ -109,18 +116,20 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
                 highSpeedSwitch.isChecked = highSpeedOn
             }
 
-            // У цьому режимі розмір кадру диктує камера — вибір роздільності вимкнено.
+            // In this mode the frame size is dictated by the camera — resolution choice is disabled.
             listEnabled = !(highSpeedAvailable && highSpeedOn)
             resolutionList.isEnabled = listEnabled
             resolutionList.alpha = if (listEnabled) 1f else 0.35f
 
-            // Висота списку: усі пункти, але не більше ~55% висоти екрана (далі — прокрутка).
-            // Рядок високошвидкісного режиму займає ~100 dp, тож список коротшає, щоб вибір камери не виходив за екран.
-            val maxHeight = maxOf(ROW_HEIGHT_DP * 3, pageHeight * 0.55 - (if (highSpeedAvailable) 110 else 0))
+            // List height: all items, but no more than ~55% of the screen height (scrolling beyond that).
+            // The high-speed row takes ~100 dp and the language row ~60 dp, so the list gets shorter so that the camera
+            // and language pickers do not go off screen.
+            val maxHeight = maxOf(ROW_HEIGHT_DP * 3, pageHeight * 0.55 - (if (highSpeedAvailable) 110 else 0) - 60)
             val listHeight = minOf(resolutions.size * ROW_HEIGHT_DP, maxHeight)
             resolutionList.layoutParams = resolutionList.layoutParams.apply { height = (listHeight * dp).toInt() }
 
-            adapter.items = resolutions.map { ResolutionItem(it, it.displayName, formatFps(frameRates, it)) }
+            val megapixelUnit = context.getString(R.string.megapixels_unit)
+            adapter.items = resolutions.map { ResolutionItem(it, it.displayName(megapixelUnit), formatFps(frameRates, it)) }
             adapter.selected = adapter.items.indexOfFirst { it.resolution == selectedResolution }
             adapter.notifyDataSetChanged()
 
@@ -128,6 +137,7 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
             this.selectedCameraId = selectedCameraId
             cameraBox.visibility = if (cameras.size > 1) VISIBLE else GONE
             cameraPicker.text = cameras.firstOrNull { it.id == selectedCameraId }?.name ?: ""
+            languagePicker.text = languageName(AppLanguage.effectiveTag(context))
         } finally {
             updating = false
         }
@@ -149,6 +159,24 @@ class SettingsPanel(context: Context) : FrameLayout(context) {
             ) { dialog, which ->
                 dialog.dismiss()
                 onCameraChosen?.invoke(cameras[which])
+            }
+            .show()
+    }
+
+    /** The language's own name ("English", "Українська"). */
+    private fun languageName(tag: String): String =
+        AppLanguage.SUPPORTED.firstOrNull { it.first == tag }?.second ?: tag
+
+    private fun showLanguageDialog() {
+        val tags = AppLanguage.SUPPORTED.map { it.first }
+        AlertDialog.Builder(context, android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(R.string.language_label)
+            .setSingleChoiceItems(
+                tags.map { languageName(it) }.toTypedArray(),
+                tags.indexOf(AppLanguage.effectiveTag(context)),
+            ) { dialog, which ->
+                dialog.dismiss()
+                onLanguageChosen?.invoke(tags[which])
             }
             .show()
     }

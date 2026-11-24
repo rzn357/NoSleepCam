@@ -1,50 +1,52 @@
 <resources>
     <string name="app_name">NoSleepCam</string>
 
-    <!-- Назви камер -->
-    <string name="camera_front">Передня камера</string>
-    <string name="camera_back">Задня камера</string>
-    <string name="camera_external">Зовнішня камера</string>
-    <!-- Якщо однакових камер кілька: «Задня камера 1» -->
+    <!-- Camera names -->
+    <string name="camera_front">Front camera</string>
+    <string name="camera_back">Back camera</string>
+    <string name="camera_external">External camera</string>
+    <!-- If there are several identical cameras: "Back camera 1" -->
     <string name="camera_numbered">%1$s %2$d</string>
 
-    <!-- Стан камери -->
-    <string name="status_no_permission">Немає дозволу на використання камери</string>
-    <string name="status_no_cameras">На пристрої не знайдено камер</string>
-    <string name="status_start_failed">Не вдалося запустити камеру. Повторна спроба…</string>
-    <string name="status_connection_lost">Зв\'язок з камерою втрачено. Перепідключення…</string>
-    <string name="status_highspeed_unsupported">Високошвидкісний режим не підтримується цією камерою</string>
-    <string name="status_resolution_unsupported">Роздільність %1$d×%2$d не підтримується, обрано %3$d×%4$d</string>
+    <!-- Camera status -->
+    <string name="status_no_permission">Camera permission is not granted</string>
+    <string name="status_no_cameras">No cameras found on this device</string>
+    <string name="status_start_failed">Could not start the camera. Retrying…</string>
+    <string name="status_connection_lost">Camera connection lost. Reconnecting…</string>
+    <string name="status_highspeed_unsupported">This camera does not support high-speed mode</string>
+    <string name="status_resolution_unsupported">Resolution %1$d×%2$d is not supported, using %3$d×%4$d</string>
 
-    <!-- Елементи керування поверх камери -->
-    <string name="fps_format">%1$d кадрів/с</string>
-    <string name="fps_badge_description">Частота кадрів</string>
-    <string name="flash_on_description">Спалах увімкнено</string>
-    <string name="flash_off_description">Спалах вимкнено</string>
-    <string name="settings_description">Налаштування</string>
-    <string name="flash_unavailable">На цій камері немає спалаху</string>
-    <string name="flash_unavailable_high_speed">У високошвидкісному режимі спалах недоступний</string>
+    <!-- Controls over the camera -->
+    <string name="fps_format">%1$d fps</string>
+    <string name="fps_badge_description">Frame rate</string>
+    <string name="flash_on_description">Flash on</string>
+    <string name="flash_off_description">Flash off</string>
+    <string name="settings_description">Settings</string>
+    <string name="flash_unavailable">This camera has no flash</string>
+    <string name="flash_unavailable_high_speed">Flash is unavailable in high-speed mode</string>
 
-    <!-- Знімок (подвійний тап) -->
-    <string name="last_photo_description">Останній знімок</string>
-    <string name="photo_failed">Не вдалося зберегти знімок</string>
-    <string name="photo_unavailable">Знімок недоступний для цієї роздільності</string>
-    <string name="photo_unavailable_high_speed">У високошвидкісному режимі знімок недоступний</string>
-    <string name="photo_storage_permission">Дозвольте доступ до пам\'яті й зробіть знімок ще раз</string>
+    <!-- Photo (double tap) -->
+    <string name="last_photo_description">Last photo</string>
+    <string name="photo_failed">Could not save the photo</string>
+    <string name="photo_unavailable">Photos are unavailable for this resolution</string>
+    <string name="photo_unavailable_high_speed">Photos are unavailable in high-speed mode</string>
+    <string name="photo_storage_permission">Allow storage access and take the photo again</string>
 
-    <!-- Немає дозволу на камеру -->
-    <string name="permission_title">Потрібен доступ до камери</string>
-    <string name="permission_message">Додаток відкриває камеру й тримає її увімкненою, поки він відкритий.</string>
-    <string name="permission_grant">Надати доступ</string>
-    <string name="permission_open_settings">Відкрити налаштування</string>
+    <!-- No camera permission -->
+    <string name="permission_title">Camera access required</string>
+    <string name="permission_message">The app opens the camera and keeps it on while the app is open.</string>
+    <string name="permission_grant">Grant access</string>
+    <string name="permission_open_settings">Open settings</string>
 
-    <!-- Вікно налаштувань -->
-    <string name="settings_title">Роздільна здатність</string>
-    <string name="settings_close">Закрити</string>
-    <string name="settings_hint">Чим вища роздільна здатність, тим чіткіше зображення, але більше навантаження на пристрій. Праворуч — найбільша частота кадрів, яку ця камера дає для такого розміру (у темряві вона може бути нижчою).</string>
-    <string name="high_speed_title">Високошвидкісний режим · %1$d кадрів/с</string>
-    <string name="high_speed_hint">Без спалаху та фокусу по дотику. Екран показує не більше 60 кадрів/с.</string>
-    <string name="high_speed_hint_with_frame">Кадр %1$d×%2$d. Без спалаху та фокусу по дотику. Екран показує не більше 60 кадрів/с.</string>
+    <!-- Settings panel -->
+    <string name="settings_title">Resolution</string>
+    <string name="settings_close">Close</string>
+    <string name="settings_hint">The higher the resolution, the sharper the image, but the greater the load on the device. On the right is the highest frame rate this camera gives for that size (it can be lower in the dark).</string>
+    <string name="high_speed_title">High-speed mode · %1$d fps</string>
+    <string name="high_speed_hint">No flash or tap to focus. The screen shows no more than 60 frames per second.</string>
+    <string name="high_speed_hint_with_frame">Frame %1$d×%2$d. No flash or tap to focus. The screen shows no more than 60 frames per second.</string>
     <string name="close_symbol" translatable="false">✕</string>
-    <string name="camera_label">Камера</string>
+    <string name="camera_label">Camera</string>
+    <string name="megapixels_unit">MP</string>
+    <string name="language_label">Language</string>
 </resources>

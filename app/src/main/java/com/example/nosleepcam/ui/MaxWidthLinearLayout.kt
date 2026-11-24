@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.AttributeSet
 import android.widget.LinearLayout
 
-/** LinearLayout, який не ширший за [maxWidthPx] (аналог MaximumWidthRequest). */
+/** LinearLayout that is no wider than [maxWidthPx] (the equivalent of MaximumWidthRequest). */
 class MaxWidthLinearLayout @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
     LinearLayout(context, attrs) {
 

@@ -1,3 +1,3 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Порожньо навмисно: тема завжди чорна, нічний режим нічого не змінює (див. values/themes.xml). -->
+<!-- Empty on purpose: the theme is always black, night mode changes nothing (see values/themes.xml). -->
 <resources />

@@ -17,8 +17,8 @@ import com.example.nosleepcam.R
 import com.example.nosleepcam.camera.CameraCapabilities
 
 /**
- * Елементи керування поверх камери: повзунок зуму, спалах, шестерня, статус і запит дозволу.
- * Не містить логіки камери — лише відображення й події (її тримає MainActivity).
+ * Controls over the camera: zoom slider, flash, gear, status and permission request.
+ * Contains no camera logic — only display and events (MainActivity holds the logic).
  */
 class CameraOverlay(context: Context) : FrameLayout(context) {
 
@@ -37,14 +37,14 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     private var supportsFlash = true
     private var highSpeed = false
 
-    /** Користувач змінив зум повзунком. */
+    /** The user changed the zoom with the slider. */
     var onZoomChanged: ((Double) -> Unit)? = null
     var onFlashClicked: (() -> Unit)? = null
     var onSettingsClicked: (() -> Unit)? = null
     var onGrantClicked: (() -> Unit)? = null
     var onOpenSystemSettingsClicked: (() -> Unit)? = null
 
-    /** Натиснули коло з останнім знімком. */
+    /** The circle with the last photo was tapped. */
     var onThumbnailClicked: (() -> Unit)? = null
 
     init {
@@ -59,7 +59,7 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         statusBadge = findViewById(R.id.status_badge)
         permissionPanel = findViewById(R.id.permission_panel)
 
-        // Тінь навколо великого числа, щоб воно читалось на будь-якому зображенні; поля — щоб тінь не обрізалась.
+        // Shadow around the big number so that it is readable over any image; padding so that the shadow is not clipped.
         zoomBigLabel.setShadowLayer(8f * dp, 0f, 0f, Color.argb(140, 0, 0, 0))
         val pad = (12 * dp).toInt()
         zoomBigLabel.setPadding(pad, pad, pad, pad)
@@ -70,7 +70,7 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         }
         zoomSlider.onInteractionStarted = { showBigZoom(true) }
         zoomSlider.onInteractionEnded = { showBigZoom(false) }
-        // Як у камері Huawei: поки розгорнута шкала зуму, решта кнопок ховається.
+        // As in the Huawei camera: while the zoom scale is expanded, the other buttons are hidden.
         zoomSlider.onExpandedChanged = { expanded -> setTopControlsHidden(expanded) }
 
         flashButton.setOnClickListener { onFlashClicked?.invoke() }
@@ -82,20 +82,20 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         setBigZoomNumber(ZoomSlider.formatBigNumber(zoomSlider.value))
     }
 
-    /** Застосовує можливості камери: діапазон зуму та наявність спалаху. */
+    /** Applies the camera's capabilities: zoom range and flash availability. */
     fun setCapabilities(caps: CameraCapabilities, zoom: Double) {
         zoomSlider.minimumZoom = caps.minZoom
         zoomSlider.maximumZoom = caps.maxZoom
         zoomSlider.value = zoom
         zoomSlider.visibility = if (caps.maxZoom > 1.05) VISIBLE else GONE
 
-        // Іконка спалаху видима завжди. Якщо в поточної камери спалаху немає (зазвичай передня) —
-        // вона приглушена, а натискання пояснює причину (див. MainActivity.onFlashClicked).
+        // The flash icon is always visible. If the current camera has no flash (usually the front one) —
+        // it is dimmed, and tapping it explains why (see MainActivity.onFlashClicked).
         supportsFlash = caps.supportsFlash
         updateFlashAvailability()
     }
 
-    /** У високошвидкісному режимі спалах недоступний: іконка приглушується, як і без апаратного спалаху. */
+    /** Flash is unavailable in high-speed mode: the icon is dimmed, same as without a hardware flash. */
     fun setHighSpeed(on: Boolean) {
         highSpeed = on
         updateFlashAvailability()
@@ -111,7 +111,7 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
             context.getString(if (on) R.string.flash_on_description else R.string.flash_off_description)
     }
 
-    /** Фактична частота кадрів біля іконки спалаху; 0 — позначку ховаємо. */
+    /** Actual frame rate next to the flash icon; 0 — hide the badge. */
     fun setFrameRate(fps: Int) {
         frameRateBadge.visibility = if (fps > 0) VISIBLE else GONE
         if (fps > 0) frameRateBadge.text = context.getString(R.string.fps_format, fps)
@@ -127,17 +127,17 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     }
 
     /**
-     * Розгорнута шкала зуму — ≈33% висоти екрана (240 dp на Honor 10) і розташована симетрично навколо центру кадра, а в
-     * спокої кільце стоїть у слоті по центру, — усе виміряно на камері Huawei. У ландшафті шкала не стає коротшою
-     * за 140 dp. [pageHeight] — висота області вмісту в dp.
+     * The expanded zoom scale is ≈33% of the screen height (240 dp on the Honor 10) and is placed symmetrically around the frame centre, while
+     * at rest the ring sits in a slot at the centre — all measured on the Huawei camera. In landscape the scale is never shorter
+     * than 140 dp. [pageHeight] is the height of the content area in dp.
      */
     fun layoutFor(pageHeight: Double) {
         if (pageHeight <= 0) return
 
         val inset = ZoomSlider.TRACK_INSET.toDouble()
 
-        // Повзунок стоїть біля правого краю, під рядком іконок (частота кадрів, спалах, шестерня) — вони не повинні
-        // накладатись. У портреті місця вдосталь; у ландшафті повзунок опускається під іконки й, якщо треба, коротшає.
+        // The slider sits near the right edge, below the icon row (frame rate, flash, gear) — they must not
+        // overlap. In portrait there is plenty of room; in landscape the slider moves below the icons and, if needed, gets shorter.
         val track = minOf(
             minOf(maxOf(pageHeight * TRACK_FRACTION, 140.0), maxOf(140.0, pageHeight * 0.7)),
             maxOf(MIN_TRACK, pageHeight - BUTTONS_BOTTOM - 2 * inset),
@@ -153,17 +153,17 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
     }
 
     private companion object {
-        /** Низ рядка іконок у верхньому куті (dp): відступ 10 + кнопка 44 + запас 4 — див. layout/camera_overlay.xml. */
+        /** Bottom of the icon row in the top corner (dp): margin 10 + button 44 + spare 4 — see layout/camera_overlay.xml. */
         const val BUTTONS_BOTTOM = 58.0
 
-        /** Найкоротша шкала зуму, коли місця зовсім мало. */
+        /** Shortest zoom scale when there is very little room. */
         const val MIN_TRACK = 100.0
 
-        /** Довжина шкали відносно висоти вмісту: 240 dp із 733 dp на Honor 10. */
+        /** Scale length relative to the content height: 240 dp out of 733 dp on the Honor 10. */
         const val TRACK_FRACTION = 0.327
     }
 
-    /** Фото в колі-мініатюрі; null — коло ховається. [pop] — «підстрибування», коли в нього прилітає новий знімок. */
+    /** Photo in the thumbnail circle; null — the circle is hidden. [pop] — a "bounce" when a new photo flies into it. */
     fun setThumbnail(image: Bitmap?, pop: Boolean = false) {
         thumbnail.image = image
         if (pop && image != null) thumbnail.pop()
@@ -171,13 +171,13 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
 
     val thumbnailImage: Bitmap? get() = thumbnail.image
 
-    /** Межі кола в системі координат цього overlay; null — ще не розкладено. */
+    /** Bounds of the circle in this overlay's coordinate system; null — not laid out yet. */
     fun thumbnailBounds(): RectF? =
         if (width == 0 || thumbnail.width == 0) null else RectF(
             thumbnail.left.toFloat(), thumbnail.top.toFloat(), thumbnail.right.toFloat(), thumbnail.bottom.toFloat(),
         )
 
-    /** Коло потрібне вже зараз (до першого знімка воно приховане, а анімація летить у його майбутнє місце). */
+    /** The circle is needed right now (it is hidden until the first photo, and the animation flies to its future place). */
     fun showThumbnailPlaceholder() {
         if (thumbnail.visibility != VISIBLE) thumbnail.visibility = INVISIBLE
     }
@@ -192,7 +192,7 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         }
     }
 
-    /** Велике число зуму: «76» і маленьке «x» поруч. */
+    /** The big zoom number: "76" with a small "x" next to it. */
     private fun setBigZoomNumber(number: String) {
         val text = SpannableStringBuilder(number)
         text.setSpan(AbsoluteSizeSpan(76, true), 0, text.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -202,7 +202,7 @@ class CameraOverlay(context: Context) : FrameLayout(context) {
         zoomBigLabel.text = text
     }
 
-    /** Велике значення зуму посеред екрана: показуємо під час перетягування, згодом згасає. */
+    /** The big zoom value in the middle of the screen: shown while dragging, fades out afterwards. */
     private fun showBigZoom(show: Boolean) {
         val token = ++bigLabelToken
         if (show) {

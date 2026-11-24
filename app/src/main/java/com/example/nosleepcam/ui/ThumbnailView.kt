@@ -12,8 +12,8 @@ import android.util.AttributeSet
 import android.view.View
 
 /**
- * Маленьке коло в лівому нижньому куті з останнім знімком (як у камері Huawei): 40 dp, фото обрізається по колу
- * з тонким білим обідком. Порожнє — не показується. Натискання відкриває знімок у галереї.
+ * A small circle in the bottom-left corner with the last photo (as in the Huawei camera): 40 dp, the photo is cropped to a circle
+ * with a thin white rim. Not shown when empty. Tapping it opens the photo in the gallery.
  */
 class ThumbnailView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -28,18 +28,18 @@ class ThumbnailView @JvmOverloads constructor(context: Context, attrs: Attribute
 
     private var bitmap: Bitmap? = null
 
-    /** Поточне фото мініатюри; null — коло ховається. */
+    /** Current thumbnail photo; null — the circle is hidden. */
     var image: Bitmap?
         get() = bitmap
         set(value) {
             bitmap = value
             photoPaint.shader = value?.let { BitmapShader(it, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP) }
-            // INVISIBLE, а не GONE: коло розкладене й до першого знімка, тож відомо, куди летіти анімації.
+            // INVISIBLE, not GONE: the circle is laid out even before the first photo, so the animation knows where to fly.
             visibility = if (value != null) VISIBLE else INVISIBLE
             invalidate()
         }
 
-    /** Коротке «підстрибування», коли в коло прилітає новий знімок. */
+    /** A short "bounce" when a new photo flies into the circle. */
     fun pop() {
         animate().cancel()
         animate().scaleX(1.18f).scaleY(1.18f).setDuration(90).withEndAction {
@@ -52,7 +52,7 @@ class ThumbnailView @JvmOverloads constructor(context: Context, attrs: Attribute
         val size = minOf(width, height).toFloat()
         val radius = size / 2f
 
-        // Фото по центру кола без спотворень (як centerCrop).
+        // Photo centred in the circle without distortion (like centerCrop).
         val scale = maxOf(size / bitmap.width, size / bitmap.height)
         matrix.setScale(scale, scale)
         matrix.postTranslate((width - bitmap.width * scale) / 2f, (height - bitmap.height * scale) / 2f)

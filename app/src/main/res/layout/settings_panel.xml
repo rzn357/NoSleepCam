@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Створюється лише при першому натисканні на шестерню, щоб не гальмувати запуск. -->
+<!-- Created only on the first tap on the gear, so as not to slow down startup. -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Затемнення: дотик поза карткою закриває вікно -->
+    <!-- Dimming: a touch outside the card closes the panel -->
     <View
         android:id="@+id/dim"
         android:layout_width="match_parent"
@@ -13,7 +13,7 @@
         android:focusable="false"
         tools:ignore="KeyboardInaccessibleWidget" />
 
-    <!-- clickable: дотики по картці не «провалюються» до затемнення й не закривають вікно -->
+    <!-- clickable: touches on the card do not "fall through" to the dimming and do not close the panel -->
     <com.example.nosleepcam.ui.MaxWidthLinearLayout
         android:id="@+id/card"
         android:layout_width="match_parent"
@@ -70,7 +70,7 @@
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
-        <!-- Високошвидкісний режим: видно лише там, де камера його підтримує -->
+        <!-- High-speed mode: visible only where the camera supports it -->
         <LinearLayout
             android:id="@+id/high_speed_box"
             android:layout_width="match_parent"
@@ -141,6 +141,42 @@
 
             <TextView
                 android:id="@+id/camera_picker"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="?android:attr/selectableItemBackground"
+                android:clickable="true"
+                android:drawableEnd="@drawable/ic_dropdown"
+                android:focusable="true"
+                android:gravity="center_vertical"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#33FFFFFF" />
+        </LinearLayout>
+
+        <!-- App language: one of the supported languages -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20dp"
+            android:layout_marginTop="12dp"
+            android:layout_marginEnd="20dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/language_label"
+                android:textColor="@color/text_secondary"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/language_picker"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="?android:attr/selectableItemBackground"

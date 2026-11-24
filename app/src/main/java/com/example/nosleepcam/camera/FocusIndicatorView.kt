@@ -15,19 +15,19 @@ import kotlin.math.hypot
 import kotlin.math.sin
 
 /**
- * Індикатор фокусування по дотику, як у камері Huawei: квадрат із чотирьох кутових дужок у точці дотику та «сонечко»
- * (яскравість) праворуч від нього.
+ * Tap-to-focus indicator, as in the Huawei camera: a square of four corner brackets at the touch point and a "sun"
+ * (brightness) to the right of it.
  *
- * Якщо потягнути «сонечко» вгору/вниз, квадрат ховається, з'являється вертикальна пунктирна лінія, «сонечко» їздить по
- * ній, а зліва показується значення експокомпенсації (EV). Після відпускання квадрат повертається, яскравість лишається,
- * а за кілька секунд усе згасає. Новий дотик скидає яскравість.
+ * If the "sun" is dragged up/down, the square hides, a vertical dotted line appears, the "sun" rides along
+ * it, and the exposure compensation (EV) value is shown on the left. After release the square returns, the brightness stays,
+ * and after a few seconds everything fades out. A new touch resets the brightness.
  *
- * Сам елемент дотики не обробляє — це робить [CameraPreviewView] (через [hitSun], [beginDrag], [dragTo], [endDrag]).
- * Усі розміри в dp взято з вимірів камери Huawei на Honor 10.
+ * The view itself does not handle touches — [CameraPreviewView] does (via [hitSun], [beginDrag], [dragTo], [endDrag]).
+ * All sizes in dp are taken from measurements of the Huawei camera on the Honor 10.
  */
 internal class FocusIndicatorView(context: Context) : View(context) {
 
-    /** Користувач змінив яскравість «сонечком»: новий індекс експокомпенсації. */
+    /** The user changed the brightness with the "sun": the new exposure compensation index. */
     var onExposureChanged: ((Int) -> Unit)? = null
 
     private val dp = context.resources.displayMetrics.density
@@ -45,25 +45,25 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     }
     private val path = Path()
 
-    // ---- Стан ----
+    // ---- State ----
     private var centerX = 0f
     private var centerY = 0f
-    private var sunSide = 1f          // +1: «сонечко» праворуч від квадрата, −1: ліворуч (коли справа немає місця)
+    private var sunSide = 1f          // +1: "sun" to the right of the square, −1: to the left (when there is no room on the right)
     private var status = FocusStatus.Searching
     private var evMin = 0
     private var evMax = 0
     private var evStep = 0f
     private var evIndex = 0
-    private var sunOffset = 0f        // px від центру квадрата; додатне — вниз (темніше)
+    private var sunOffset = 0f        // px from the square's centre; positive — down (darker)
     private var dragStartY = 0f
     private var dragStartOffset = 0f
     private var dragging = false
 
-    // ---- Анімовані значення (0…1) ----
-    private var masterAlpha = 0f      // весь індикатор
-    private var squareAlpha = 1f      // квадрат (ховається, поки тягнемо «сонечко»)
-    private var lineAlpha = 0f        // пунктирна шкала
-    private var labelAlpha = 0f       // значення EV: лише поки тягнемо «сонечко»
+    // ---- Animated values (0…1) ----
+    private var masterAlpha = 0f      // the whole indicator
+    private var squareAlpha = 1f      // the square (hides while the "sun" is dragged)
+    private var lineAlpha = 0f        // the dotted scale
+    private var labelAlpha = 0f       // the EV value: only while the "sun" is dragged
     private var squareScale = 1f
     private val masterTween = Tween()
     private val squareTween = Tween()
@@ -79,7 +79,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         color = Color.WHITE
     }
 
-    /** Яскравість доступна лише там, де камера має діапазон експокомпенсації (і не у високошвидкісному режимі). */
+    /** Brightness is available only where the camera has an exposure compensation range (and not in high-speed mode). */
     private val evEnabled: Boolean get() = evMax > evMin
 
     private val sunX: Float get() = centerX + sunSide * SUN_DISTANCE * dp
@@ -87,10 +87,10 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     private val halfLine: Float get() = LINE_HALF_LENGTH * dp
 
     // ------------------------------------------------------------------
-    // API для CameraPreviewView
+    // API for CameraPreviewView
     // ------------------------------------------------------------------
 
-    /** Діапазон яскравості поточної камери (з геометрії попереднього перегляду). */
+    /** Brightness range of the current camera (from the preview geometry). */
     fun configure(geometry: PreviewGeometry) {
         evMin = geometry.evMin
         evMax = geometry.evMax
@@ -99,13 +99,13 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         invalidate()
     }
 
-    /** Дотик у точці (x, y): показуємо квадрат (з коротким «наближенням»), яскравість скидаємо. */
+    /** Touch at (x, y): show the square (with a short "zoom-in"), reset the brightness. */
     fun showAt(x: Float, y: Float) {
         removeCallbacks(hideRunnable)
         dragging = false
         centerX = x
         centerY = y
-        // Праворуч від квадрата лишається місце для «сонечка» й підпису; якщо ні — ставимо ліворуч.
+        // To the right of the square there is room left for the "sun" and the label; if not — put it on the left.
         sunSide = if (x + (SUN_DISTANCE + SUN_RADIUS + 8f) * dp <= width) 1f else -1f
         evIndex = 0
         sunOffset = 0f
@@ -119,7 +119,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         invalidate()
     }
 
-    /** Результат фокусування: колір дужок; за кілька секунд індикатор згасає. */
+    /** Focus result: the brackets' colour; after a few seconds the indicator fades out. */
     fun setStatus(newStatus: FocusStatus) {
         if (newStatus == FocusStatus.Searching) return
 
@@ -128,7 +128,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         if (!dragging) scheduleHide()
     }
 
-    /** Чи потрапляє дотик на «сонечко» (з запасом на палець). */
+    /** Whether the touch lands on the "sun" (with a margin for the finger). */
     fun hitSun(x: Float, y: Float): Boolean =
         evEnabled && masterAlpha > 0.3f && hypot(x - sunX, y - sunY) <= GRAB_RADIUS * dp
 
@@ -142,7 +142,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         labelTween.run(labelAlpha, 1f, 120) { labelAlpha = it }
     }
 
-    /** Рух пальця: «сонечко» слідує за ним уздовж лінії; повертає новий індекс, лише якщо він змінився. */
+    /** Finger movement: the "sun" follows it along the line; returns the new index only if it changed. */
     fun dragTo(y: Float) {
         if (!dragging) return
 
@@ -159,15 +159,15 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         if (!dragging) return
 
         dragging = false
-        // «Сонечко» стає точно на позицію обраного значення.
+        // The "sun" snaps exactly to the position of the chosen value.
         sunOffset = -ExposureCompensation.fractionFor(evIndex, evMin, evMax) * halfLine
         squareTween.run(squareAlpha, 1f, 160) { squareAlpha = it }
-        labelTween.run(labelAlpha, 0f, 150) { labelAlpha = it } // як у Huawei: після відпускання значення зникає
+        labelTween.run(labelAlpha, 0f, 150) { labelAlpha = it } // as in Huawei: after release the value disappears
         scheduleHide()
         invalidate()
     }
 
-    /** Негайно ховає індикатор (зміна орієнтації, камери чи режиму). */
+    /** Immediately hides the indicator (orientation, camera or mode change). */
     fun hideNow() {
         removeCallbacks(hideRunnable)
         dragging = false
@@ -187,7 +187,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         masterTween.run(masterAlpha, 0f, 300) { masterAlpha = it }
     }
 
-    /** Одна анімація значення; нова зупиняє попередню. */
+    /** A single value animation; a new one stops the previous one. */
     private inner class Tween {
         private var animator: ValueAnimator? = null
 
@@ -224,7 +224,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
     }
 
     // ------------------------------------------------------------------
-    // Малювання
+    // Drawing
     // ------------------------------------------------------------------
 
     override fun onDraw(canvas: Canvas) {
@@ -240,7 +240,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
 
     private fun alpha(factor: Float) = (255 * masterAlpha * factor).coerceIn(0f, 255f).toInt()
 
-    /** Чотири кутові дужки із заокругленими кутами; колір — за результатом фокусування. */
+    /** Four corner brackets with rounded corners; the colour depends on the focus result. */
     private fun drawSquare(canvas: Canvas) {
         val half = SQUARE_HALF * dp * squareScale
         val arm = BRACKET_ARM * dp
@@ -256,7 +256,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
 
         for (sx in intArrayOf(-1, 1)) {
             for (sy in intArrayOf(-1, 1)) {
-                // Кут (cx±half, cy±half): дві «руки» довжиною arm і заокруглення між ними.
+                // Corner (cx±half, cy±half): two "arms" of length arm and a rounding between them.
                 val x = centerX + sx * half
                 val y = centerY + sy * half
                 path.reset()
@@ -270,7 +270,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         }
     }
 
-    /** «Сонечко»: коло з вісьмома променями. */
+    /** The "sun": a circle with eight rays. */
     private fun drawSun(canvas: Canvas) {
         val x = sunX
         val y = sunY
@@ -291,7 +291,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         }
     }
 
-    /** Вертикальна пунктирна лінія крізь «сонечко» — шкала яскравості. */
+    /** A vertical dotted line through the "sun" — the brightness scale. */
     private fun drawLine(canvas: Canvas) {
         val x = sunX
         val spacing = DOT_SPACING * dp
@@ -302,7 +302,7 @@ internal class FocusIndicatorView(context: Context) : View(context) {
 
         var y = centerY - halfLine
         while (y <= centerY + halfLine + 0.1f) {
-            // Під «сонечком» точки не малюємо.
+            // No dots under the "sun".
             if (abs(y - sunY) > (SUN_RAY_TO + 3f) * dp) {
                 canvas.drawCircle(x, y, radius + 0.6f * dp, shadowFill)
                 canvas.drawCircle(x, y, radius, dotPaint)
@@ -311,29 +311,29 @@ internal class FocusIndicatorView(context: Context) : View(context) {
         }
     }
 
-    /** Велике значення EV збоку від «сонечка», по центру його висоти. */
+    /** The large EV value beside the "sun", centred on its height. */
     private fun drawLabel(canvas: Canvas) {
         val text = ExposureCompensation.format(evIndex, evStep)
         textPaint.alpha = alpha(labelAlpha)
         val metrics = textPaint.fontMetrics
         val baseline = sunY - (metrics.ascent + metrics.descent) / 2f
-        // Підпис з того боку «сонечка», що звернений від квадрата.
+        // Label on the side of the "sun" facing away from the square.
         textPaint.textAlign = if (sunSide > 0) Paint.Align.RIGHT else Paint.Align.LEFT
         val x = if (sunSide > 0) sunX - LABEL_GAP * dp else sunX + LABEL_GAP * dp
         canvas.drawText(text, x, baseline, textPaint)
     }
 
     private companion object {
-        const val SQUARE_HALF = 40f          // квадрат 80×80 dp
-        const val BRACKET_ARM = 19f          // довжина «руки» кутової дужки
-        const val BRACKET_RADIUS = 4f        // заокруглення кута
-        const val SUN_DISTANCE = 66.7f       // від центру квадрата до «сонечка»
+        const val SQUARE_HALF = 40f          // square 80×80 dp
+        const val BRACKET_ARM = 19f          // length of a corner bracket's "arm"
+        const val BRACKET_RADIUS = 4f        // corner rounding
+        const val SUN_DISTANCE = 66.7f       // from the square's centre to the "sun"
         const val SUN_CIRCLE = 4.5f
         const val SUN_RAY_FROM = 7.5f
         const val SUN_RAY_TO = 10.5f
         const val SUN_RADIUS = 10.5f
-        const val GRAB_RADIUS = 30f          // зона захоплення «сонечка» пальцем
-        const val LINE_HALF_LENGTH = 48f     // пунктирна шкала: ±48 dp від центру квадрата
+        const val GRAB_RADIUS = 30f          // zone in which a finger grabs the "sun"
+        const val LINE_HALF_LENGTH = 48f     // dotted scale: ±48 dp from the square's centre
         const val DOT_SPACING = 5f
         const val DOT_RADIUS = 0.8f
         const val LABEL_SIZE = 36f

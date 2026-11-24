@@ -1,7 +1,7 @@
 <resources>
     <!--
-        Інтерфейс завжди темний і чорний: чорне вікно й чорні системні панелі, щоб між запуском і першим
-        кадром камери нічого не миготіло. Тема не залежить від AppCompat/Material — це швидше при холодному старті.
+        The UI is always dark and black: a black window and black system bars, so that nothing flickers between launch and the first
+        camera frame. The theme does not depend on AppCompat/Material — this is faster on a cold start.
     -->
     <style name="Theme.NoSleepCam" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/black</item>

@@ -9,19 +9,19 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 
 /**
- * Системні панелі.
+ * System bars.
  *
- * - Портрет: панелі видимі й чорні, вміст відступає від них (на Android 15+ вікно за замовчуванням малюється під ними,
- *   на старіших системах відступ нульовий).
- * - Ландшафт: панелі ховаються, і камера займає весь екран — інакше смуга статусу «відрізає» верх кадра. Свайп від краю
- *   тимчасово показує панелі поверх зображення.
+ * - Portrait: the bars are visible and black, the content is inset from them (on Android 15+ the window is drawn under them by default,
+ *   on older systems the inset is zero).
+ * - Landscape: the bars are hidden and the camera fills the whole screen — otherwise the status strip "cuts off" the top of the frame. A swipe from the edge
+ *   temporarily shows the bars over the image.
  *
- * Виклики API 30+ винесено в окремі класи: так клас активності не посилається на них напряму, і на старіших
- * системах рантайм не скаржиться на невідомі методи при верифікації.
+ * API 30+ calls are moved into separate classes: that way the activity class does not reference them directly, and on older
+ * systems the runtime does not complain about unknown methods during verification.
  */
 internal object SystemBarInsets {
 
-    /** Відступи від системних панелей. У повноекранному режимі ([immersive]) їх немає — панелі приховані. */
+    /** Insets from the system bars. In immersive mode ([immersive]) there are none — the bars are hidden. */
     fun install(root: View, immersive: () -> Boolean) {
         root.setOnApplyWindowInsetsListener { view, insets ->
             when {
@@ -33,7 +33,7 @@ internal object SystemBarInsets {
         }
     }
 
-    /** Ховає (true) або показує (false) системні панелі. */
+    /** Hides (true) or shows (false) the system bars. */
     fun setImmersive(window: Window, immersive: Boolean) {
         if (Build.VERSION.SDK_INT >= 30) {
             Api30.setImmersive(window, immersive)
@@ -64,7 +64,7 @@ internal object SystemBarInsets {
         }
     }
 
-    // @RequiresApi з AndroidX не підключаємо (додаток без AndroidX), тому фреймворкова @TargetApi.
+    // We don't pull in @RequiresApi from AndroidX (the app has no AndroidX), so we use the framework @TargetApi.
     @SuppressLint("UseRequiresApi")
     @TargetApi(Build.VERSION_CODES.R)
     private object Api30 {

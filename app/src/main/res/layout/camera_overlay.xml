@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Усе керування поверх камери. Створюється вже ПІСЛЯ першого кадра камери (див. MainActivity),
-    щоб не затримувати запуск: для появи зображення потрібен лише TextureView.
-    Сам кореневий елемент не обробляє дотики (дотик по кадру — фокус), а діти — інтерактивні.
+    All the controls over the camera. Created only AFTER the camera's first frame (see MainActivity),
+    so as not to delay startup: showing the image needs only the TextureView.
+    The root element itself does not handle touches (a touch on the frame is focus), while its children are interactive.
 -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Повзунок зуму поверх зображення (справа). Висоту й відступ згори задає CameraOverlay.layoutFor -->
+    <!-- Zoom slider over the image (on the right). Its height and top margin are set by CameraOverlay.layoutFor -->
     <com.example.nosleepcam.ui.ZoomSlider
         android:id="@+id/zoom_slider"
         android:layout_width="76dp"
@@ -16,7 +16,7 @@
         android:layout_marginEnd="2dp"
         android:visibility="gone" />
 
-    <!-- Велике значення зуму посеред екрана — з'являється лише під час перетягування -->
+    <!-- Big zoom value in the middle of the screen — appears only while dragging -->
     <TextView
         android:id="@+id/zoom_big_label"
         android:layout_width="wrap_content"
@@ -27,7 +27,7 @@
         android:includeFontPadding="false"
         android:textColor="@color/white" />
 
-    <!-- Частота кадрів, спалах і налаштування — у правому верхньому куті -->
+    <!-- Frame rate, flash and settings — in the top right corner -->
     <LinearLayout
         android:id="@+id/top_controls"
         android:layout_width="wrap_content"
@@ -38,7 +38,7 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Фактична частота кадрів; ховається, коли камера не віддає кадрів -->
+        <!-- Actual frame rate; hidden when the camera delivers no frames -->
         <TextView
             android:id="@+id/frame_rate_badge"
             android:layout_width="wrap_content"
@@ -78,7 +78,7 @@
             android:src="@drawable/ic_settings" />
     </LinearLayout>
 
-    <!-- Останній знімок: маленьке коло в лівому нижньому куті; видно, лише коли знімок уже є -->
+    <!-- Last photo: a small circle in the bottom-left corner; visible only when a photo already exists -->
     <com.example.nosleepcam.ui.ThumbnailView
         android:id="@+id/thumbnail"
         android:layout_width="40dp"
@@ -89,7 +89,7 @@
         android:contentDescription="@string/last_photo_description"
         android:visibility="invisible" />
 
-    <!-- Стан камери: з'являється лише при проблемах (перепідключення тощо) -->
+    <!-- Camera status: appears only when there are problems (reconnecting etc.) -->
     <TextView
         android:id="@+id/status_badge"
         android:layout_width="wrap_content"
@@ -108,7 +108,7 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
-    <!-- Немає дозволу на камеру -->
+    <!-- No camera permission -->
     <LinearLayout
         android:id="@+id/permission_panel"
         android:layout_width="match_parent"

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Рядок списку роздільностей: розмір кадру й найбільша частота кадрів для нього. Висота 48dp (див. SettingsPanel.ROW_HEIGHT_DP). -->
+<!-- A resolution list row: frame size and the highest frame rate for it. Height 48dp (see SettingsPanel.ROW_HEIGHT_DP). -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="48dp"

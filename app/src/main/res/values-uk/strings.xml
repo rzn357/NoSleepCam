@@ -1,0 +1,51 @@
+<resources>
+    <string name="app_name">NoSleepCam</string>
+
+    <!-- Camera names -->
+    <string name="camera_front">Передня камера</string>
+    <string name="camera_back">Задня камера</string>
+    <string name="camera_external">Зовнішня камера</string>
+    <!-- If there are several identical cameras: "Задня камера 1" -->
+    <string name="camera_numbered">%1$s %2$d</string>
+
+    <!-- Camera status -->
+    <string name="status_no_permission">Немає дозволу на використання камери</string>
+    <string name="status_no_cameras">На пристрої не знайдено камер</string>
+    <string name="status_start_failed">Не вдалося запустити камеру. Повторна спроба…</string>
+    <string name="status_connection_lost">Зв\'язок з камерою втрачено. Перепідключення…</string>
+    <string name="status_highspeed_unsupported">Високошвидкісний режим не підтримується цією камерою</string>
+    <string name="status_resolution_unsupported">Роздільність %1$d×%2$d не підтримується, обрано %3$d×%4$d</string>
+
+    <!-- Controls over the camera -->
+    <string name="fps_format">%1$d кадрів/с</string>
+    <string name="fps_badge_description">Частота кадрів</string>
+    <string name="flash_on_description">Спалах увімкнено</string>
+    <string name="flash_off_description">Спалах вимкнено</string>
+    <string name="settings_description">Налаштування</string>
+    <string name="flash_unavailable">На цій камері немає спалаху</string>
+    <string name="flash_unavailable_high_speed">У високошвидкісному режимі спалах недоступний</string>
+
+    <!-- Photo (double tap) -->
+    <string name="last_photo_description">Останній знімок</string>
+    <string name="photo_failed">Не вдалося зберегти знімок</string>
+    <string name="photo_unavailable">Знімок недоступний для цієї роздільності</string>
+    <string name="photo_unavailable_high_speed">У високошвидкісному режимі знімок недоступний</string>
+    <string name="photo_storage_permission">Дозвольте доступ до пам\'яті й зробіть знімок ще раз</string>
+
+    <!-- No camera permission -->
+    <string name="permission_title">Потрібен доступ до камери</string>
+    <string name="permission_message">Додаток відкриває камеру й тримає її увімкненою, поки він відкритий.</string>
+    <string name="permission_grant">Надати доступ</string>
+    <string name="permission_open_settings">Відкрити налаштування</string>
+
+    <!-- Settings panel -->
+    <string name="settings_title">Роздільна здатність</string>
+    <string name="settings_close">Закрити</string>
+    <string name="settings_hint">Чим вища роздільна здатність, тим чіткіше зображення, але більше навантаження на пристрій. Праворуч — найбільша частота кадрів, яку ця камера дає для такого розміру (у темряві вона може бути нижчою).</string>
+    <string name="high_speed_title">Високошвидкісний режим · %1$d кадрів/с</string>
+    <string name="high_speed_hint">Без спалаху та фокусу по дотику. Екран показує не більше 60 кадрів/с.</string>
+    <string name="high_speed_hint_with_frame">Кадр %1$d×%2$d. Без спалаху та фокусу по дотику. Екран показує не більше 60 кадрів/с.</string>
+    <string name="camera_label">Камера</string>
+    <string name="megapixels_unit">МП</string>
+    <string name="language_label">Мова</string>
+</resources>

@@ -15,11 +15,11 @@ import android.view.View
 import android.view.animation.PathInterpolator
 
 /**
- * Анімація знімка: екран «блимає», як від затвора, а застигле зображення зменшується, округлюється й летить у коло
- * з останнім знімком у лівому нижньому куті.
+ * Capture animation: the screen "blinks" like a shutter, and the frozen image shrinks, rounds off and flies into the circle
+ * with the last photo in the bottom-left corner.
  *
- * Малює лише поки триває анімація й дотики не обробляє. Координати [play] — у системі цього вигляду
- * (він накладається на попередній перегляд і мініатюру).
+ * Draws only while the animation runs and does not handle touches. The coordinates of [play] are in this view's system
+ * (it overlays the preview and the thumbnail).
  */
 class CaptureAnimationView(context: Context) : View(context) {
 
@@ -39,8 +39,8 @@ class CaptureAnimationView(context: Context) : View(context) {
     private val imageInBitmap = Rect()
     private val from = RectF()
     private val to = RectF()
-    private var flight = 0f // 0 — зображення на місці прев'ю, 1 — уже в колі
-    private var blink = 0f  // 0…1…0: затемнення «затвора»
+    private var flight = 0f // 0 — image in place of the preview, 1 — already in the circle
+    private var blink = 0f  // 0…1…0: "shutter" darkening
     private var blinkAnimator: ValueAnimator? = null
     private var flightAnimator: ValueAnimator? = null
 
@@ -50,9 +50,9 @@ class CaptureAnimationView(context: Context) : View(context) {
     }
 
     /**
-     * Запускає анімацію. [image] — застигле прев'ю, [imageRect] — область зображення в ньому (без чорних полів),
-     * [fromRect] — де це зображення стоїть на екрані, [toRect] — межі кола-мініатюри. [onEnd] — коли зображення
-     * долетіло (викликається й при перериванні).
+     * Starts the animation. [image] is the frozen preview, [imageRect] is the image area within it (without black bars),
+     * [fromRect] is where this image is on screen, [toRect] is the bounds of the thumbnail circle. [onEnd] — when the image
+     * has arrived (also called on interruption).
      */
     fun play(image: Bitmap, imageRect: Rect, fromRect: RectF, toRect: RectF, onEnd: () -> Unit) {
         cancelRunning()
@@ -63,7 +63,7 @@ class CaptureAnimationView(context: Context) : View(context) {
         flight = 0f
         blink = 0f
 
-        // «Затвор»: коротке затемнення всього екрана.
+        // "Shutter": a short darkening of the whole screen.
         blinkAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = (BLINK_MS * timeScale).toLong()
             addUpdateListener {
@@ -73,7 +73,7 @@ class CaptureAnimationView(context: Context) : View(context) {
             start()
         }
 
-        // Політ: після короткої паузи — зменшення, округлення й рух у мініатюру.
+        // Flight: after a short pause — shrinking, rounding and moving into the thumbnail.
         flightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             startDelay = (FLIGHT_DELAY_MS * timeScale).toLong()
             duration = (FLIGHT_MS * timeScale).toLong()
@@ -113,14 +113,14 @@ class CaptureAnimationView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val bitmap = bitmap ?: return
 
-        // Поточна рамка: від зображення на екрані до кола; кути плавно округлюються до півдовжини меншої сторони.
+        // Current frame: from the image on screen to the circle; the corners smoothly round off to half of the shorter side.
         rect.set(
             lerp(from.left, to.left, flight), lerp(from.top, to.top, flight),
             lerp(from.right, to.right, flight), lerp(from.bottom, to.bottom, flight),
         )
         val radius = minOf(rect.width(), rect.height()) / 2f * flight
 
-        // Фрагмент знімка під пропорції рамки (centerCrop), щоб зображення не стискалось.
+        // A fragment of the photo matching the frame's proportions (centerCrop), so that the image is not squashed.
         val aspect = rect.width() / rect.height()
         val imageAspect = imageInBitmap.width().toFloat() / imageInBitmap.height()
         if (imageAspect > aspect) {
@@ -154,10 +154,10 @@ class CaptureAnimationView(context: Context) : View(context) {
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     companion object {
-        /** Лише для діагностики (збірка з -PstartupTrace=true): уповільнення анімації, щоб розглянути її покадрово. */
+        /** Diagnostics only (build with -PstartupTrace=true): slows the animation down to examine it frame by frame. */
         var timeScale = 1f
 
-        /** Скільки триває «блимання» затвора й коли починається політ (мс); весь знімок ≈ 0,5 с. */
+        /** How long the shutter "blink" lasts and when the flight starts (ms); the whole capture ≈ 0.5 s. */
         private const val BLINK_MS = 160L
         private const val FLIGHT_DELAY_MS = 90L
         private const val FLIGHT_MS = 360L

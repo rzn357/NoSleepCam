@@ -50,14 +50,14 @@ class CameraResolutionTest {
 
     @Test
     fun aspectRatioFallsBackToDecimalWithLocaleSeparator() {
-        // 4608×2272 ≈ 2,03:1 — наближення до відомих пропорцій не підходить
+        // 4608×2272 ≈ 2.03:1 — approximating to known aspect ratios does not fit
         assertEquals("2,03:1", CameraResolution(4608, 2272).aspectRatio)
     }
 
     @Test
     fun displayNameMatchesTheOriginalFormat() {
-        assertEquals("4000×3000 · 12,0 МП · 4:3", CameraResolution(4000, 3000).displayName)
-        assertEquals("1920×1080 · 2,1 МП · 16:9", CameraResolution(1920, 1080).displayName)
+        assertEquals("4000×3000 · 12,0 MP · 4:3", CameraResolution(4000, 3000).displayName("MP"))
+        assertEquals("1920×1080 · 2,1 MP · 16:9", CameraResolution(1920, 1080).displayName("MP"))
     }
 
     @Test

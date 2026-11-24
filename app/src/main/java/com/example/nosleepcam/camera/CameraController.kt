@@ -27,6 +27,7 @@ import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
+import com.example.nosleepcam.AppLanguage
 import com.example.nosleepcam.Prefs
 import com.example.nosleepcam.R
 import com.example.nosleepcam.StartupTrace
@@ -38,7 +39,7 @@ import kotlin.math.roundToInt
 
 private const val TAG = "NoSleepCam"
 
-/** Геометрія буфера попереднього перегляду — потрібна, щоб правильно повернути й вписати зображення. */
+/** Geometry of the preview buffer — needed to rotate and fit the image correctly. */
 internal data class PreviewGeometry(
     val bufferWidth: Int,
     val bufferHeight: Int,
@@ -46,55 +47,55 @@ internal data class PreviewGeometry(
     val isFront: Boolean,
     val canFocus: Boolean,
 
-    /** Діапазон індексів експокомпенсації та крок у EV; evMin == evMax — регулювання яскравості недоступне. */
+    /** Range of exposure compensation indices and the step in EV; evMin == evMax — brightness adjustment is unavailable. */
     val evMin: Int = 0,
     val evMax: Int = 0,
     val evStep: Float = 0f,
 
-    /** У сесії є JPEG-потік для знімків (немає у високошвидкісному режимі й коли пристрій відхилив такий потік). */
+    /** The session has a JPEG stream for photos (absent in high-speed mode and when the device rejected such a stream). */
     val canCapture: Boolean = false,
 ) {
     val isValid: Boolean get() = bufferWidth > 0 && bufferHeight > 0
 
     val canAdjustExposure: Boolean get() = evMax > evMin
 
-    /** Дотик по кадру має сенс: або фокус, або хоча б вимірювання експозиції та яскравість. */
+    /** A touch on the frame makes sense: either focus, or at least exposure metering and brightness. */
     val canTap: Boolean get() = canFocus || canAdjustExposure
 }
 
-/** [Metered] — камера без автофокусу: у цій точці лише виміряно експозицію. */
+/** [Metered] — a camera without autofocus: only the exposure was metered at this point. */
 internal enum class FocusStatus { Searching, Focused, Failed, Metered }
 
 /**
- * Підписник на події камери. Усі методи викликаються на фоновому потоці камери —
- * споживач сам переходить у UI-потік.
+ * Subscriber to camera events. All methods are called on the camera's background thread —
+ * the consumer switches to the UI thread itself.
  */
 internal interface CameraListener {
     fun onCapabilities(capabilities: CameraCapabilities) {}
     fun onResolutionApplied(resolution: CameraResolution) {}
     fun onGeometry(geometry: PreviewGeometry) {}
 
-    /** Текст стану для користувача; null — усе гаразд, повідомлення ховається. */
+    /** Status text for the user; null — all is well, the message is hidden. */
     fun onStatus(status: String?) {}
     fun onFocus(status: FocusStatus) {}
 
-    /** Фактична частота кадрів (к/с, ціле); 0 — камера не працює або йде перенастроювання. */
+    /** Actual frame rate (fps, integer); 0 — the camera is not running or is being reconfigured. */
     fun onFrameRate(fps: Int) {}
 
-    /** Знімок записано в галерею. Викликається не з потоку камери. */
+    /** The photo has been written to the gallery. Not called on the camera thread. */
     fun onPhotoSaved(uri: Uri) {}
 
-    /** Знімок не вдалося зробити чи зберегти. */
+    /** The photo could not be taken or saved. */
     fun onPhotoFailed() {}
 }
 
 /**
- * Керує камерою через Camera2: відкриття, сесія попереднього перегляду, зум, автофокус
- * (безперервний + по дотику) і автоматичне перепідключення.
+ * Controls the camera through Camera2: opening, the preview session, zoom, autofocus
+ * (continuous + tap) and automatic reconnection.
  *
- * Усі зміни стану камери виконуються на одному фоновому потоці ([handler]).
- * Зовнішні методи лише запам'ятовують «бажаний стан» і викликають [reconcile],
- * який приводить фактичний стан камери до бажаного — тому порядок викликів не має значення.
+ * All camera state changes happen on one background thread ([handler]).
+ * External methods only remember the "desired state" and call [reconcile],
+ * which brings the actual camera state to the desired one — so the order of calls does not matter.
  */
 internal class CameraController private constructor(private val context: Context) {
 
@@ -105,22 +106,22 @@ internal class CameraController private constructor(private val context: Context
     private val captureCallback = CaptureCb()
     private val listeners = CopyOnWriteArrayList<CameraListener>()
 
-    // Кеші та чорні списки — лише потік камери.
+    // Caches and blacklists — camera thread only.
     private val specs = HashMap<String, CameraSpec>()
     private val blocked = HashSet<Pair<String, CameraResolution>>()
     private val blockedHighSpeed = HashSet<Pair<String, CameraResolution>>()
 
-    // ---- Бажаний стан (пишеться з будь-якого потоку) ----
+    // ---- Desired state (written from any thread) ----
     @Volatile private var wantActive = false
     @Volatile private var wantCameraId: String? = null
     @Volatile private var wantResolution: CameraResolution? = null
     @Volatile private var wantZoom = 1f
     @Volatile private var wantFlash = false
     @Volatile private var wantHighSpeed = false
-    @Volatile private var wantEv = 0 // індекс експокомпенсації (яскравість); скидається новим дотиком
+    @Volatile private var wantEv = 0 // exposure compensation index (brightness); reset by a new touch
     private val zoomPosted = AtomicBoolean(false)
 
-    // ---- Фактичний стан (лише потік камери) ----
+    // ---- Actual state (camera thread only) ----
     private var texture: SurfaceTexture? = null
     private var device: CameraDevice? = null
     private var session: CameraCaptureSession? = null
@@ -131,18 +132,18 @@ internal class CameraController private constructor(private val context: Context
     private var opening = false
     private var sessionPending = false
     private var retryDelayMs = 1000L
-    private var activeHighSpeed = false     // поточна сесія — високошвидкісна
-    private var publishedHighSpeed = false  // з яким режимом востаннє передано можливості інтерфейсу
+    private var activeHighSpeed = false     // the current session is high-speed
+    private var publishedHighSpeed = false  // the mode with which the capabilities were last passed to the UI
 
-    // ---- Фокус по дотику (лише потік камери) ----
+    // ---- Tap to focus (camera thread only) ----
     private enum class FocusPhase { None, Triggering, Searching }
 
     private var focusPhase = FocusPhase.None
 
     /**
-     * Поки true — усі запити йдуть у режимі AF_MODE_AUTO. У CONTINUOUS_PICTURE драйвер Honor 10 на тригер START лише
-     * «замикає» поточну позицію лінзи за ~4 кадри й нічого не скануючи (LENS_FOCUS_DISTANCE не змінюється), тож фокус по
-     * дотику не працює. В AUTO той самий тригер запускає справжній ACTIVE_SCAN по вибраному регіону.
+     * While true, all requests go in AF_MODE_AUTO. In CONTINUOUS_PICTURE the Honor 10 driver on a START trigger only
+     * "locks" the current lens position after ~4 frames without scanning anything (LENS_FOCUS_DISTANCE does not change), so tap
+     * focus does not work. In AUTO the same trigger starts a real ACTIVE_SCAN over the chosen region.
      */
     private var focusAutoMode = false
     private var focusStartFrame = 0L
@@ -152,25 +153,25 @@ internal class CameraController private constructor(private val context: Context
 
     private var lastCapabilities: CameraCapabilities? = null
 
-    // ---- Знімки: JPEG-потік у тій самій сесії, що й попередній перегляд (лише потік камери, окрім savePool) ----
-    private var reader: ImageReader? = null          // потік активної сесії
-    private var pendingReader: ImageReader? = null   // потік сесії, що налаштовується
+    // ---- Photos: a JPEG stream in the same session as the preview (camera thread only, except savePool) ----
+    private var reader: ImageReader? = null          // stream of the active session
+    private var pendingReader: ImageReader? = null   // stream of the session being configured
     private val blockedStill = HashSet<Pair<String, CameraResolution>>()
     private val savePool = Executors.newSingleThreadExecutor()
     private val stillCallback = StillCb()
-    private var pendingCaptureRotation = -1  // знімок чекає на завершення фокусу (−1 — не чекає)
+    private var pendingCaptureRotation = -1  // a photo is waiting for focus to finish (−1 — not waiting)
     private val pendingCaptureRunnable = Runnable { flushPendingCapture() }
-    private var capabilitiesPending = false  // камеру відкрито, а можливості ще не передано інтерфейсу
+    private var capabilitiesPending = false  // the camera is open, but the capabilities have not yet been passed to the UI
     private val publishPendingRunnable = Runnable { publishPendingCapabilities() }
     @Volatile private var uiAttached = false
 
     // =====================================================================
-    // Публічний API (потокобезпечний)
+    // Public API (thread-safe)
     // =====================================================================
 
     /**
-     * Підписує інтерфейс і одразу надсилає йому все, що відбулось ще до підписки
-     * (камера могла відкритись під час прогріву, коли підписників ще не було).
+     * Subscribes the UI and immediately sends it everything that happened before the subscription
+     * (the camera may have opened during warm-up, when there were no subscribers yet).
      */
     fun addListener(listener: CameraListener) = post {
         listeners.add(listener)
@@ -185,6 +186,15 @@ internal class CameraController private constructor(private val context: Context
         }
 
         if (reportedFps > 0) listener.onFrameRate(reportedFps)
+    }
+
+    /** A string in the language chosen right now (the application context itself keeps the language of process start). */
+    private fun str(id: Int, vararg args: Any): String = AppLanguage.wrap(context).getString(id, *args)
+
+    /** The app language changed: names built from string resources are stale, so the caches are dropped. */
+    fun onLanguageChanged() = post {
+        specs.clear()
+        lastCapabilities = null
     }
 
     fun removeListener(listener: CameraListener) {
@@ -213,7 +223,7 @@ internal class CameraController private constructor(private val context: Context
         wantZoom = zoom.toFloat()
         StartupTrace.req { "setZoom(${"%.2f".format(zoom)}) posted=${zoomPosted.get()}" }
 
-        // Повзунок генерує десятки подій на секунду — об'єднуємо їх в одне оновлення запиту.
+        // The slider generates dozens of events per second — we merge them into a single request update.
         if (zoomPosted.compareAndSet(false, true)) {
             post {
                 zoomPosted.set(false)
@@ -222,14 +232,14 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    /** Спалах у режимі ліхтарика: світиться постійно, доки камера працює. */
+    /** Flash in torch mode: lit continuously while the camera is running. */
     fun setFlash(on: Boolean) {
         if (wantFlash == on) return
         wantFlash = on
         post(::applyRepeating)
     }
 
-    /** Яскравість: індекс експокомпенсації (діапазон і крок — у [PreviewGeometry]); обмежується діапазоном камери. */
+    /** Brightness: exposure compensation index (range and step are in [PreviewGeometry]); clamped to the camera's range. */
     fun setExposureCompensation(index: Int) {
         if (wantEv == index) return
         wantEv = index
@@ -237,8 +247,8 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Високошвидкісний режим (до 120 кадрів/с). Вмикається лише якщо камера його заявляє; інакше ігнорується.
-     * Сесія перебудовується, а зум обмежується заявленим максимумом.
+     * High-speed mode (up to 120 fps). Enabled only if the camera declares it; otherwise ignored.
+     * The session is rebuilt and the zoom is limited to the declared maximum.
      */
     fun setHighSpeed(on: Boolean) {
         if (wantHighSpeed == on) return
@@ -247,7 +257,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     fun onSurfaceAvailable(texture: SurfaceTexture) = post {
-        StartupTrace.mark { "Поверхню TextureView готово" }
+        StartupTrace.mark { "TextureView surface ready" }
         this.texture = texture
         reconcile()
     }
@@ -258,8 +268,8 @@ internal class CameraController private constructor(private val context: Context
             this.texture = null
         }
 
-        // Контролер сам звільняє текстуру, тому що TextureView ми попросили її не вивільняти:
-        // так камера гарантовано закривається ДО знищення поверхні.
+        // The controller releases the texture itself, because we asked the TextureView not to release it:
+        // this guarantees that the camera is closed BEFORE the surface is destroyed.
         try {
             texture.release()
         } catch (ex: Exception) {
@@ -267,7 +277,7 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    /** Фокус у точці (s, t) ∈ [0,1]² «природного» (як у телефона в портреті) зображення. */
+    /** Focus at point (s, t) ∈ [0,1]² of the "natural" (as on a phone in portrait) image. */
     fun focusAt(s: Float, t: Float) = post { startFocus(s, t) }
 
     fun resetFocus() = post {
@@ -281,7 +291,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Зведення бажаного стану до фактичного
+    // Reconciling the desired state with the actual one
     // =====================================================================
 
     private fun reconcile() {
@@ -292,38 +302,38 @@ internal class CameraController private constructor(private val context: Context
 
         if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             closeCamera()
-            raiseStatus(context.getString(R.string.status_no_permission))
+            raiseStatus(str(R.string.status_no_permission))
             return
         }
 
         val targetId = resolveTargetId(wantCameraId)
         if (targetId == null) {
-            raiseStatus(context.getString(R.string.status_no_cameras))
+            raiseStatus(str(R.string.status_no_cameras))
             return
         }
 
         if (device != null && device?.id != targetId) closeCamera()
 
-        // Пристрій камери відкриваємо одразу, не чекаючи на поверхню: це триває найдовше,
-        // і воно має йти паралельно зі створенням інтерфейсу.
+        // We open the camera device right away, without waiting for the surface: it takes the longest,
+        // and it must run in parallel with the UI creation.
         if (device == null) {
             if (!opening) openCamera(targetId)
-            return // продовжимо в onCameraOpened
+            return // continue in onCameraOpened
         }
 
-        if (texture == null) return // камеру відкрито; сесію створимо, щойно з'явиться поверхня (onSurfaceAvailable)
+        if (texture == null) return // the camera is open; we will create the session as soon as the surface appears (onSurfaceAvailable)
 
-        if (sessionPending) return // продовжимо в onSessionConfigured / onSessionConfigureFailed
+        if (sessionPending) return // continue in onSessionConfigured / onSessionConfigureFailed
 
-        // Високошвидкісний режим: розмір кадру диктує камера, вибрана користувачем роздільність не чіпається.
+        // High-speed mode: the frame size is dictated by the camera; the resolution chosen by the user is not touched.
         val currentSpec = spec
         val highSpeed = if (currentSpec != null && highSpeedWanted(currentSpec)) resolveHighSpeed(currentSpec) else null
 
         val resolution = highSpeed?.size ?: resolveResolution()
         if (resolution == null) {
-            // Усі розміри відхилені пристроєм — очищаємо чорний список і пробуємо знову пізніше.
+            // All sizes were rejected by the device — clear the blacklist and try again later.
             blocked.clear()
-            raiseStatus(context.getString(R.string.status_start_failed))
+            raiseStatus(str(R.string.status_start_failed))
             scheduleRetry()
             return
         }
@@ -338,13 +348,13 @@ internal class CameraController private constructor(private val context: Context
 
     private fun highSpeedWanted(spec: CameraSpec) = wantHighSpeed && spec.supportsHighSpeed
 
-    /** Перший високошвидкісний розмір, який пристрій ще не відхилив (найбільший — він і найкращий). */
+    /** The first high-speed size the device has not yet rejected (the largest — it is also the best). */
     private fun resolveHighSpeed(spec: CameraSpec): HighSpeedConfig? =
         spec.highSpeedConfigs.firstOrNull { (spec.id to it.size) !in blockedHighSpeed }
 
     /**
-     * Яку камеру відкривати. Якщо камеру вже відомо (збережена з минулого запуску) — беремо її одразу,
-     * не перебираючи характеристики всіх камер пристрою (кожна — окремий виклик до системи).
+     * Which camera to open. If the camera is already known (saved from the last launch) — we take it right away,
+     * without iterating over the characteristics of all the device's cameras (each is a separate system call).
      */
     private fun resolveTargetId(wantCameraId: String?): String? {
         if (wantCameraId != null) {
@@ -353,8 +363,8 @@ internal class CameraController private constructor(private val context: Context
                 if (cached != null) {
                     if (cached.resolutions.isNotEmpty()) return wantCameraId
                 } else if (wantCameraId in manager.cameraIdList) {
-                    // Характеристики ще не читали: не витрачаємо на них час перед відкриттям — openCamera() прочитає їх
-                    // паралельно з тим, як система відкриває камеру.
+                    // The characteristics have not been read yet: we don't spend time on them before opening — openCamera() reads them
+                    // in parallel with the system opening the camera.
                     return wantCameraId
                 }
             } catch (ex: Exception) {
@@ -375,27 +385,27 @@ internal class CameraController private constructor(private val context: Context
     private fun handleLost(reason: String) {
         Log.w(TAG, "Camera lost: $reason")
         closeCamera()
-        raiseStatus(context.getString(R.string.status_connection_lost))
+        raiseStatus(str(R.string.status_connection_lost))
         scheduleRetry()
     }
 
     // =====================================================================
-    // Відкриття камери та сесії
+    // Opening the camera and the session
     // =====================================================================
 
-    @SuppressLint("MissingPermission") // дозвіл перевіряється в reconcile()
+    @SuppressLint("MissingPermission") // permission is checked in reconcile()
     private fun openCamera(id: String) {
         opening = true
         val gen = ++generation
         try {
-            // Спершу просимо систему відкрити камеру, і лише потім читаємо характеристики: поки сервіс камери
-            // працює над відкриттям, цей потік не простоює. Колбек onOpened не спрацює, доки ми не повернемось.
+            // First we ask the system to open the camera, and only then read the characteristics: while the camera service
+            // is busy opening, this thread does not idle. The onOpened callback will not fire until we return.
             manager.openCamera(id, DeviceCb(gen), handler)
-            StartupTrace.mark { "openCamera() викликано" }
+            StartupTrace.mark { "openCamera() called" }
             val loaded = loadSpec(id)
             spec = loaded
             if (loaded.resolutions.isEmpty()) {
-                // Камера без придатних розмірів (напр. зникла зовнішня): забуваємо її й обираємо іншу.
+                // A camera without usable sizes (e.g. an external one that disappeared): forget it and pick another.
                 closeCamera()
                 wantCameraId = null
                 post(::reconcile)
@@ -412,16 +422,16 @@ internal class CameraController private constructor(private val context: Context
             return
         }
 
-        StartupTrace.mark { "Камеру відкрито (CameraDevice.onOpened)" }
+        StartupTrace.mark { "Camera opened (CameraDevice.onOpened)" }
         device = camera
         opening = false
         retryDelayMs = 1000L
         handler.removeCallbacks(retryRunnable)
         Prefs(context).cameraId = camera.id
 
-        // Спершу запускаємо сесію (якщо поверхня вже є). Повний перелік камер для інтерфейсу збираємо лише ПІСЛЯ того,
-        // як сесія налаштована й перший запит відправлено: колбеки сесії приходять на цей самий потік, тож збирання
-        // (≈100 мс на Honor 10) раніше затримало б появу першого кадра. Запасний таймер — на випадок, якщо сесія не стартує.
+        // First we start the session (if the surface already exists). We assemble the full list of cameras for the UI only AFTER
+        // the session is configured and the first request is sent: session callbacks arrive on this same thread, so assembling it
+        // (≈100 ms on the Honor 10) earlier would delay the first frame. The fallback timer is for the case where the session does not start.
         capabilitiesPending = true
         reconcile()
         handler.postDelayed(publishPendingRunnable, CAPABILITIES_FALLBACK_MS)
@@ -431,7 +441,7 @@ internal class CameraController private constructor(private val context: Context
         try {
             camera.close()
         } catch (_: Exception) {
-            // вже закрита
+            // already closed
         }
 
         if (gen != generation) return
@@ -440,13 +450,13 @@ internal class CameraController private constructor(private val context: Context
         handleLost(reason)
     }
 
-    @Suppress("DEPRECATION") // SessionConfiguration — лише з API 28, а minSdk = 24
+    @Suppress("DEPRECATION") // SessionConfiguration — only from API 28, and minSdk = 24
     private fun createSession(resolution: CameraResolution, highSpeed: HighSpeedConfig?) {
         val device = device!!
         val texture = texture!!
         try {
             sessionPending = true
-            session = null // стара сесія закриється автоматично при створенні нової
+            session = null // the old session closes automatically when a new one is created
             resetFrameRate()
 
             texture.setDefaultBufferSize(resolution.width, resolution.height)
@@ -455,12 +465,12 @@ internal class CameraController private constructor(private val context: Context
 
             val gen = generation
             if (highSpeed != null) {
-                // Спеціальна сесія для частоти понад 30 кадрів/с: лише поверхня прев'ю заявленого розміру.
+                // A special session for rates above 30 fps: only the preview surface of the declared size.
                 device.createConstrainedHighSpeedCaptureSession(listOf(newSurface), SessionCb(gen, resolution, true, false), handler)
                 return
             }
 
-            // Крім прев'ю, у сесії є JPEG-потік для знімків (камера віддає з нього повнорозмірне фото).
+            // Besides the preview, the session has a JPEG stream for photos (the camera delivers a full-size photo from it).
             val still = openStillReader(resolution)
             device.createCaptureSession(listOfNotNull(newSurface, still?.surface), SessionCb(gen, resolution, false, still != null), handler)
         } catch (ex: Exception) {
@@ -474,15 +484,15 @@ internal class CameraController private constructor(private val context: Context
             try {
                 session.close()
             } catch (_: Exception) {
-                // ігноруємо
+                // ignore
             }
             pendingReader?.close()
             pendingReader = null
             return
         }
 
-        StartupTrace.mark { "Сесію налаштовано (${resolution.key}${if (highSpeed) ", високошвидкісна" else ""})" }
-        // Потік попередньої сесії більше не потрібен; новий (якщо є) стає активним — до raiseGeometry().
+        StartupTrace.mark { "Session configured (${resolution.key}${if (highSpeed) ", high-speed" else ""})" }
+        // The previous session's stream is no longer needed; the new one (if any) becomes active — before raiseGeometry().
         reader?.close()
         reader = pendingReader
         pendingReader = null
@@ -495,27 +505,27 @@ internal class CameraController private constructor(private val context: Context
         val spec = spec!!
         raiseGeometry()
 
-        // У високошвидкісному режимі розмір кадру не обирається користувачем: інтерфейс не повинен
-        // «запам'ятати» його як вибраний (інакше він затре справжній вибір після повернення в звичайний режим).
+        // In high-speed mode the frame size is not chosen by the user: the UI must not
+        // "remember" it as selected (otherwise it would overwrite the real choice after returning to the normal mode).
         if (!highSpeed) emit { it.onResolutionApplied(resolution) }
 
         raiseStatus(null)
 
         applyRepeating()
 
-        // У режимі AUTO камера сама не фокусується — один раз запускаємо автофокус вручну.
+        // In AUTO mode the camera does not focus on its own — we start autofocus manually once.
         if (spec.afMode == CameraMetadata.CONTROL_AF_MODE_AUTO && !highSpeed) {
             triggerAf(CameraMetadata.CONTROL_AF_TRIGGER_START)
         }
 
-        // Режим змінився — максимум зуму та підтримка режиму можуть відрізнятись; а після відкриття камери
-        // тут же публікуємо відкладені можливості (запит уже відправлено, тож це не гальмує перший кадр).
+        // The mode changed — the zoom maximum and mode support may differ; and after the camera is opened
+        // we publish the deferred capabilities right here (the request has already been sent, so this does not delay the first frame).
         if (highSpeed != publishedHighSpeed) publishCapabilities() else publishPendingCapabilities()
 
         reconcile()
     }
 
-    /** Передає інтерфейсу актуальні можливості поточної камери. */
+    /** Passes the UI the current capabilities of the active camera. */
     private fun publishCapabilities() {
         capabilitiesPending = false
         val spec = spec ?: return
@@ -524,10 +534,10 @@ internal class CameraController private constructor(private val context: Context
         val capabilities = buildCapabilities(spec.id)
         lastCapabilities = capabilities
         emit { it.onCapabilities(capabilities) }
-        StartupTrace.mark { "Можливості камери передано інтерфейсу" }
+        StartupTrace.mark { "Camera capabilities passed to the UI" }
     }
 
-    /** Відкладена публікація можливостей після відкриття камери (див. onCameraOpened). */
+    /** Deferred publication of the capabilities after the camera is opened (see onCameraOpened). */
     private fun publishPendingCapabilities() {
         handler.removeCallbacks(publishPendingRunnable)
         if (capabilitiesPending && device != null) publishCapabilities()
@@ -537,8 +547,8 @@ internal class CameraController private constructor(private val context: Context
         val spec = spec ?: return null
         val resolution = activeResolution ?: return null
 
-        // Фокус по дотику у високошвидкісній сесії неможливий (вона не приймає одиночних запитів і тригерів).
-        // Так само й яскравість: високошвидкісний запит навмисно мінімальний, експокомпенсації в ньому немає.
+        // Tap focus in a high-speed session is impossible (it does not accept single requests and triggers).
+        // The same goes for brightness: the high-speed request is deliberately minimal, with no exposure compensation.
         return PreviewGeometry(
             resolution.width, resolution.height, spec.sensorOrientation, spec.isFront,
             spec.afMode != CameraMetadata.CONTROL_AF_MODE_OFF && !activeHighSpeed,
@@ -563,8 +573,8 @@ internal class CameraController private constructor(private val context: Context
         publishPendingCapabilities()
 
         if (withStill) {
-            // Можливо, відхилено саме поєднання прев'ю з JPEG-потоком. Не відкидаємо через це роздільність:
-            // пробуємо ту саму без знімків (тоді знімок для неї недоступний).
+            // Perhaps it was precisely the combination of the preview with the JPEG stream that was rejected. We don't discard the resolution because of that:
+            // we try the same one without photos (then photos are unavailable for it).
             blockedStill.add(spec!!.id to resolution)
             Log.w(TAG, "Configure with JPEG failed for ${resolution.key}, retrying without")
             reconcile()
@@ -572,14 +582,14 @@ internal class CameraController private constructor(private val context: Context
         }
 
         if (highSpeed) {
-            // Не чіпаємо звичайний список розмірів: відхилено саме високошвидкісний режим цього розміру.
+            // We don't touch the regular size list: it was the high-speed mode of this size that was rejected.
             val failedSpec = spec!!
             blockedHighSpeed.add(failedSpec.id to resolution)
             Log.w(TAG, "High-speed configure failed for ${resolution.key}")
 
             if (resolveHighSpeed(failedSpec) == null) {
                 failedSpec.highSpeedBroken = true
-                raiseStatus(context.getString(R.string.status_highspeed_unsupported))
+                raiseStatus(str(R.string.status_highspeed_unsupported))
             }
 
             activeHighSpeed = false
@@ -594,7 +604,7 @@ internal class CameraController private constructor(private val context: Context
         val next = resolveResolution()
         if (next != null) {
             raiseStatus(
-                context.getString(
+                str(
                     R.string.status_resolution_unsupported, resolution.width, resolution.height, next.width, next.height,
                 ),
             )
@@ -646,7 +656,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Запити до камери: зум, режим автофокусу, регіони
+    // Camera requests: zoom, autofocus mode, regions
     // =====================================================================
 
     private fun buildRequest(afTrigger: Int): CaptureRequest.Builder {
@@ -662,14 +672,14 @@ internal class CameraController private constructor(private val context: Context
         builder.set(CaptureRequest.CONTROL_AF_MODE, if (focusAutoMode) CameraMetadata.CONTROL_AF_MODE_AUTO else spec.afMode)
         builder.set(CaptureRequest.CONTROL_AF_TRIGGER, afTrigger)
 
-        // Torch тримає спалах увімкненим на кожному кадрі (в тому числі під час фокусування).
+        // Torch keeps the flash on in every frame (including during focusing).
         builder.set(
             CaptureRequest.FLASH_MODE,
             if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
         )
 
-        // Без явного діапазону драйвер Honor 10 за замовчуванням тримає прев'ю на ~25 к/с (діапазон [14,25]), хоча для
-        // більшості розмірів заявляє 30; з явним [14,30] при світлі виходить 30. Верхня межа — заявлена для цього розміру.
+        // Without an explicit range the Honor 10 driver by default keeps the preview at ~25 fps (range [14,25]), although for
+        // most sizes it declares 30; with an explicit [14,30] it gives 30 in good light. The upper bound is the one declared for this size.
         aeFpsRangeFor(spec, activeResolution)?.let { (lower, upper) ->
             builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(lower, upper))
         }
@@ -677,7 +687,7 @@ internal class CameraController private constructor(private val context: Context
         val crop = cropForZoom(spec)
         builder.set(CaptureRequest.SCALER_CROP_REGION, crop)
 
-        // Регіон поза видимою зоною камера ігнорує, тому приймаємо його лише коли він у кадрі.
+        // A region outside the visible area is ignored by the camera, so we accept it only when it is within the frame.
         val af = afRegions
         if (af != null && spec.maxAfRegions > 0 && isVisible(af, crop)) {
             builder.set(CaptureRequest.CONTROL_AF_REGIONS, af)
@@ -711,9 +721,9 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Запит у високошвидкісній сесії. Навмисно мінімальний: лише авто-режими, діапазон частоти з переліку камери та зум.
-     * Спалах, регіони фокусу й тригери сюди не додаємо — така сесія приймає не все, а драйвер Honor на
-     * неприпустимих параметрах уже зависав.
+     * A request in a high-speed session. Deliberately minimal: only auto modes, the frame rate range from the camera's list, and zoom.
+     * We don't add flash, focus regions and triggers here — such a session does not accept everything, and the Honor driver
+     * has already hung on invalid parameters.
      */
     private fun applyHighSpeedRepeating(session: CameraCaptureSession) {
         val spec = spec!!
@@ -744,12 +754,12 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    /** Максимум зуму, який зараз пропонується: у високошвидкісному режимі — лише заявлений камерою. */
+    /** Maximum zoom offered at the moment: in high-speed mode — only the one declared by the camera. */
     private fun effectiveMaxZoom(spec: CameraSpec) = if (highSpeedWanted(spec)) spec.declaredMaxZoom else spec.maxZoom
 
     private fun currentZoom(spec: CameraSpec) = wantZoom.coerceIn(1f, maxOf(1f, effectiveMaxZoom(spec)))
 
-    /** Область сенсора, яку треба показувати при поточному зумі (по центру). */
+    /** The sensor area that must be shown at the current zoom (centred). */
     private fun cropForZoom(spec: CameraSpec): Rect {
         val zoom = currentZoom(spec)
         val active = spec.activeArray
@@ -763,8 +773,8 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Фактично видима частина сенсора: камера додатково обрізає область зуму до пропорцій
-     * потоку (напр. 16:9 з сенсора 4:3). Потрібно для точного відображення дотику в координати сенсора.
+     * The actually visible part of the sensor: the camera additionally crops the zoom area to the aspect ratio
+     * of the stream (e.g. 16:9 from a 4:3 sensor). Needed to map a touch to sensor coordinates accurately.
      */
     private fun visibleSensorRect(spec: CameraSpec, stream: CameraResolution): Rect {
         val crop = cropForZoom(spec)
@@ -792,10 +802,10 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Знімок
+    // Photo
     // =====================================================================
 
-    /** Створює приймач JPEG для роздільності прев'ю; null — знімки для неї недоступні. */
+    /** Creates a JPEG receiver for the preview resolution; null — photos are unavailable for it. */
     private fun openStillReader(resolution: CameraResolution): ImageReader? {
         val spec = spec ?: return null
         if ((spec.id to resolution) in blockedStill) return null
@@ -810,13 +820,13 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Робить знімок: повнорозмірний JPEG із тими самими зумом, яскравістю, спалахом і фокусом, що й у прев'ю.
-     * [displayRotation] — поточний поворот екрана (0/90/180/270), від нього залежить, як повернути фото.
-     * Результат — [CameraListener.onPhotoSaved] або [CameraListener.onPhotoFailed].
+     * Takes a photo: a full-size JPEG with the same zoom, brightness, flash and focus as in the preview.
+     * [displayRotation] is the current screen rotation (0/90/180/270), which determines how the photo is rotated.
+     * The result is [CameraListener.onPhotoSaved] or [CameraListener.onPhotoFailed].
      */
     fun capturePhoto(displayRotation: Int) = post {
         if (focusPhase != FocusPhase.None) {
-            // Фокус по дотику (перший тап подвійного) ще триває: чекаємо на результат, щоб знімок не вийшов розфокусованим.
+            // Tap focus (the first tap of a double tap) is still in progress: we wait for the result so that the photo does not come out unfocused.
             pendingCaptureRotation = displayRotation
             handler.removeCallbacks(pendingCaptureRunnable)
             handler.postDelayed(pendingCaptureRunnable, CAPTURE_WAIT_FOR_FOCUS_MS)
@@ -825,7 +835,7 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    /** Фокус завершився (або вийшов час очікування) — робимо знімок, що чекав на нього. */
+    /** Focus finished (or the wait timed out) — we take the photo that was waiting for it. */
     private fun flushPendingCapture() {
         handler.removeCallbacks(pendingCaptureRunnable)
         val rotation = pendingCaptureRotation
@@ -850,12 +860,12 @@ internal class CameraController private constructor(private val context: Context
             builder.addTarget(reader.surface)
             builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-            // Після фокусу по дотику лінза залочена в режимі AUTO — лишаємо його й для знімка.
+            // After tap focus the lens is locked in AUTO mode — we keep it for the photo as well.
             builder.set(CaptureRequest.CONTROL_AF_MODE, if (focusAutoMode) CameraMetadata.CONTROL_AF_MODE_AUTO else spec.afMode)
             if (spec.evMax > spec.evMin) {
                 builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, wantEv.coerceIn(spec.evMin, spec.evMax))
             }
-            // Спалах у режимі ліхтарика лишається ввімкненим і для знімка.
+            // Flash in torch mode stays on for the photo as well.
             builder.set(
                 CaptureRequest.FLASH_MODE,
                 if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
@@ -877,7 +887,7 @@ internal class CameraController private constructor(private val context: Context
         }
     }
 
-    /** JPEG готовий: забираємо байти й передаємо запис у галерею окремому потоку, щоб не блокувати камеру. */
+    /** The JPEG is ready: we take the bytes and hand the gallery write over to a separate thread so as not to block the camera. */
     private fun onStillAvailable(source: ImageReader) {
         val image = try {
             source.acquireNextImage()
@@ -902,7 +912,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Фокус по дотику
+    // Tap focus
     // =====================================================================
 
     private fun startFocus(s: Float, t: Float) {
@@ -913,11 +923,11 @@ internal class CameraController private constructor(private val context: Context
         if (session == null || spec == null || resolution == null || activeHighSpeed ||
             (noAf && spec.maxAeRegions == 0)
         ) {
-            emit { it.onFocus(FocusStatus.Failed) } // прибираємо індикатор, який вже показано
+            emit { it.onFocus(FocusStatus.Failed) } // remove the indicator that is already shown
             return
         }
 
-        // «Природні» координати (s,t) → координати буфера сенсора (поворот назад на sensorOrientation).
+        // "Natural" coordinates (s,t) → sensor buffer coordinates (rotating back by sensorOrientation).
         val sd = s.toDouble()
         val td = t.toDouble()
         val (sx, sy) = when (spec.sensorOrientation) {
@@ -942,7 +952,7 @@ internal class CameraController private constructor(private val context: Context
         aeRegions = if (spec.maxAeRegions > 0) arrayOf(region) else null
 
         if (noAf) {
-            // Камера без автофокусу (зазвичай передня): у цій точці лише вимірюємо експозицію.
+            // A camera without autofocus (usually the front one): at this point we only meter the exposure.
             applyRepeating()
             emit { it.onFocus(FocusStatus.Metered) }
             return
@@ -958,7 +968,7 @@ internal class CameraController private constructor(private val context: Context
         }
 
         try {
-            // Скидаємо попередній тригер, потім запускаємо новий і оновлюємо регіони в повторюваному запиті.
+            // Reset the previous trigger, then start a new one and update the regions in the repeating request.
             session.capture(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_CANCEL).build(), captureCallback, handler)
             session.capture(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_START).build(), captureCallback, handler)
             session.setRepeatingRequest(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
@@ -980,9 +990,9 @@ internal class CameraController private constructor(private val context: Context
         val token = focusToken
         focusPhase = FocusPhase.None
         emit { it.onFocus(if (success) FocusStatus.Focused else FocusStatus.Failed) }
-        flushPendingCapture() // лінза залочена (режим AUTO) — знімок, що чекав на фокус, робимо саме зараз
+        flushPendingCapture() // the lens is locked (AUTO mode) — we take the photo that was waiting for focus right now
 
-        // Коротко тримаємо блокування, потім повертаємо безперервний автофокус (регіон лишається).
+        // Briefly hold the lock, then return to continuous autofocus (the region stays).
         handler.postDelayed({
             if (token == focusToken) endFocusLock()
         }, FOCUS_HOLD_MS)
@@ -1000,7 +1010,7 @@ internal class CameraController private constructor(private val context: Context
     private fun triggerAf(trigger: Int) {
         val session = session
         if (session == null || device == null || surface == null || spec == null || activeHighSpeed) {
-            return // високошвидкісна сесія не приймає одиночних запитів і тригерів
+            return // a high-speed session does not accept single requests and triggers
         }
 
         try {
@@ -1013,14 +1023,14 @@ internal class CameraController private constructor(private val context: Context
     private fun onCaptureCompleted(request: CaptureRequest, result: TotalCaptureResult) {
         measureFrameRate(result)
         if (!activeHighSpeed) {
-            checkZoomHonored(request, result) // у високошвидкісному режимі область кадрування може не діяти — це не «обрізання» зуму
+            checkZoomHonored(request, result) // in high-speed mode the crop region may not apply — that is not zoom "clamping"
         }
 
         traceAf(request, result)
         if (focusPhase == FocusPhase.None) return
 
         if (focusPhase == FocusPhase.Triggering) {
-            // Дочікуємось кадру, у якому справді був відправлений тригер START.
+            // We wait for the frame in which the START trigger was actually sent.
             val trigger = request.get(CaptureRequest.CONTROL_AF_TRIGGER) ?: -1
             if (trigger != CameraMetadata.CONTROL_AF_TRIGGER_START) return
 
@@ -1038,7 +1048,7 @@ internal class CameraController private constructor(private val context: Context
 
     private var traceAfLastState = -1
 
-    /** Діагностика AF (тег NSC-Req): стан, режим, тригер запиту, регіони у відповіді, дистанція лінзи. */
+    /** AF diagnostics (tag NSC-Req): state, mode, request trigger, regions in the response, lens distance. */
     private fun traceAf(request: CaptureRequest, result: TotalCaptureResult) = StartupTrace.req {
         val state = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
         val changed = state != traceAfLastState
@@ -1051,7 +1061,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // ---------------------------------------------------------------------
-    // Фактична частота кадрів (показується біля іконки спалаху)
+    // Actual frame rate (shown next to the flash icon)
     // ---------------------------------------------------------------------
 
     private var fpsFirstTimestamp = 0L
@@ -1059,8 +1069,8 @@ internal class CameraController private constructor(private val context: Context
     private var reportedFps = 0
 
     /**
-     * Рахує кадри за мітками часу сенсора (точніше, ніж за моментом надходження callback-ів) у вікні ≈1 с
-     * і повідомляє інтерфейс, коли ціле значення змінилось.
+     * Counts frames by sensor timestamps (more accurate than by callback arrival time) in a ≈1 s window
+     * and notifies the UI when the integer value changes.
      */
     private fun measureFrameRate(result: TotalCaptureResult) {
         val timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: 0L
@@ -1085,7 +1095,7 @@ internal class CameraController private constructor(private val context: Context
         emit { it.onFrameRate(fps) }
     }
 
-    /** Камеру закрито або перенастроєно — старе значення вже недостовірне. */
+    /** The camera was closed or reconfigured — the old value is no longer reliable. */
     private fun resetFrameRate() {
         fpsCount = 0
         publishFrameRate(0)
@@ -1103,22 +1113,22 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // ---------------------------------------------------------------------
-    // Зум понад заявлений максимум (лише Huawei/Honor, див. HUAWEI_MAX_ZOOM)
+    // Zoom beyond the declared maximum (Huawei/Honor only, see HUAWEI_MAX_ZOOM)
     //
-    // Якщо камера мовчки обрізає запитаний зум (результат кадру показує ширшу область, ніж запитано), знижуємо
-    // максимум до реально виконуваного, щоб повзунок не обіцяв більше, ніж є. Зависання драйвера так не виправити:
-    // у такому разі потік камери блокується всередині виклику драйвера, тому понад перевірені межі не йдемо взагалі.
+    // If the camera silently clamps the requested zoom (the frame result shows a wider area than requested), we lower
+    // the maximum to what is actually achievable, so that the slider does not promise more than there is. A driver hang cannot be fixed this way:
+    // in that case the camera thread blocks inside a driver call, so we do not go beyond the verified limits at all.
     // ---------------------------------------------------------------------
 
     private fun checkZoomHonored(request: CaptureRequest, result: TotalCaptureResult) {
         val spec = spec ?: return
-        if (spec.maxZoom <= spec.declaredMaxZoom + 0.01f) return // запитуємо в межах заявленого — перевіряти нічого
+        if (spec.maxZoom <= spec.declaredMaxZoom + 0.01f) return // we request within the declared range — nothing to check
 
         val asked = request.get(CaptureRequest.SCALER_CROP_REGION)
         val applied = result.get(CaptureResult.SCALER_CROP_REGION)
         if (asked == null || asked.width() <= 0 || applied == null || applied.width() <= 0) return
 
-        // Допуск 3%: камери трохи округлюють область. Вужча область — це лише підгонка під пропорції потоку.
+        // Tolerance 3%: cameras round the area slightly. A narrower area is just fitting to the stream's aspect ratio.
         if (applied.width() <= asked.width() * 1.03f) return
 
         val achieved = spec.activeArray.width() / applied.width().toFloat()
@@ -1129,7 +1139,7 @@ internal class CameraController private constructor(private val context: Context
         spec.maxZoom = limit
         if (wantZoom > limit) wantZoom = limit
 
-        // Інтерфейс опускає повзунок до нового максимуму.
+        // The UI lowers the slider to the new maximum.
         val capabilities = buildCapabilities(spec.id)
         lastCapabilities = capabilities
         emit { it.onCapabilities(capabilities) }
@@ -1137,7 +1147,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Характеристики камер
+    // Camera characteristics
     // =====================================================================
 
     private class CameraSpec(
@@ -1147,47 +1157,47 @@ internal class CameraController private constructor(private val context: Context
         val sensorOrientation: Int,
         val activeArray: Rect,
 
-        /** Максимум цифрового зуму, який камера заявляє через стандартний API. */
+        /** Maximum digital zoom the camera declares through the standard API. */
         val declaredMaxZoom: Float,
 
-        /** Максимум, який пропонуємо користувачу (≥ заявленого); знижується, якщо камера його не виконує. */
+        /** Maximum we offer the user (≥ declared); lowered if the camera does not deliver it. */
         var maxZoom: Float,
 
         val afMode: Int,
 
-        /** Камера вміє режим AUTO (потрібен для справжнього фокусування по дотику, див. startFocus). */
+        /** The camera supports AUTO mode (needed for real tap focus, see startFocus). */
         val hasAfAuto: Boolean,
         val maxAfRegions: Int,
         val maxAeRegions: Int,
         val hasFlash: Boolean,
 
-        /** Діапазон індексів експокомпенсації (яскравість) і крок одного індексу в EV. */
+        /** Range of exposure compensation indices (brightness) and the EV step of one index. */
         val evMin: Int,
         val evMax: Int,
         val evStep: Float,
 
-        /** Камера придатна для показу зображення (не depth/IR-сенсор тощо). */
+        /** The camera is suitable for showing an image (not a depth/IR sensor etc.). */
         val backwardCompatible: Boolean,
         val resolutions: List<CameraResolution>,
 
-        /** Розміри, у яких камера віддає JPEG (знімки), від найбільшого. */
+        /** Sizes in which the camera delivers JPEG (photos), from the largest. */
         val jpegSizes: List<CameraResolution>,
         val frameRates: Map<String, Double>,
 
-        /** Діапазони цільової частоти кадрів, які камера дозволяє для автоекспозиції. */
+        /** Target frame rate ranges the camera allows for auto-exposure. */
         val aeFpsRanges: List<Pair<Int, Int>>,
 
-        /** Високошвидкісні режими камери (розмір + діапазон частоти), від найбільшого розміру; порожньо — немає. */
+        /** The camera's high-speed modes (size + rate range), from the largest size; empty — none. */
         val highSpeedConfigs: List<HighSpeedConfig>,
         val highSpeedAfMode: Int,
     ) {
-        /** Пристрій відхилив усі високошвидкісні режими — більше їх не пропонуємо. */
+        /** The device rejected all high-speed modes — we do not offer them any more. */
         var highSpeedBroken = false
 
         val supportsHighSpeed: Boolean get() = !highSpeedBroken && highSpeedConfigs.isNotEmpty()
     }
 
-    /** Високошвидкісний режим камери: розмір кадру та дозволений діапазон частоти (напр. 1920×1080, [30,120]). */
+    /** A camera's high-speed mode: frame size and the allowed rate range (e.g. 1920×1080, [30,120]). */
     private data class HighSpeedConfig(val size: CameraResolution, val lower: Int, val upper: Int)
 
     private fun isBack(id: String) = !loadSpec(id).isFront
@@ -1223,7 +1233,7 @@ internal class CameraController private constructor(private val context: Context
             .distinct()
             .sortedByDescending { it.pixels }
 
-        // Зовсім крихітні розміри (QCIF тощо) нікому не потрібні — відкидаємо, якщо є з чого обирати.
+        // Very tiny sizes (QCIF etc.) are of no use to anyone — we drop them if there is something to choose from.
         val usable = resolutions.filter { it.width >= 320 && it.height >= 240 }
         if (usable.isNotEmpty()) resolutions = usable
 
@@ -1231,7 +1241,7 @@ internal class CameraController private constructor(private val context: Context
 
         val newSpec = CameraSpec(
             id = id,
-            name = context.getString(
+            name = str(
                 when (facing) {
                     CameraMetadata.LENS_FACING_FRONT -> R.string.camera_front
                     CameraMetadata.LENS_FACING_EXTERNAL -> R.string.camera_external
@@ -1280,7 +1290,7 @@ internal class CameraController private constructor(private val context: Context
         return newSpec
     }
 
-    /** Камери, придатні для показу зображення (без depth/IR-сенсорів тощо). */
+    /** Cameras suitable for showing an image (without depth/IR sensors etc.). */
     private fun listCameras(): List<CameraDescriptor> {
         val usable = ArrayList<CameraSpec>()
         val ids = try {
@@ -1299,7 +1309,7 @@ internal class CameraController private constructor(private val context: Context
             }
         }
 
-        // Якщо однакових камер кілька — нумеруємо їх: «Задня камера 1», «Задня камера 2».
+        // If there are several identical cameras, we number them: "Back camera 1", "Back camera 2".
         return usable
             .groupBy { it.name }
             .values
@@ -1307,7 +1317,7 @@ internal class CameraController private constructor(private val context: Context
                 if (group.size == 1) {
                     group.map { CameraDescriptor(it.id, it.name) }
                 } else {
-                    group.mapIndexed { i, s -> CameraDescriptor(s.id, context.getString(R.string.camera_numbered, s.name, i + 1)) }
+                    group.mapIndexed { i, s -> CameraDescriptor(s.id, str(R.string.camera_numbered, s.name, i + 1)) }
                 }
             }
             .sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
@@ -1332,8 +1342,8 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Обирає роздільність: запитану (якщо камера її підтримує і вона не відхилена),
-     * інакше збалансовану — найбільшу до ~2 МП із повним полем зору сенсора.
+     * Picks a resolution: the requested one (if the camera supports it and it has not been rejected),
+     * otherwise a balanced one — the largest up to ~2 MP with the sensor's full field of view.
      */
     private fun resolveResolution(): CameraResolution? {
         val spec = spec ?: return null
@@ -1346,15 +1356,15 @@ internal class CameraController private constructor(private val context: Context
 
         val sensorAspect = spec.activeArray.width().toDouble() / spec.activeArray.height()
         val balanced = candidates.filter { it.pixels <= DEFAULT_PREVIEW_PIXELS }
-        if (balanced.isEmpty()) return candidates.last() // навіть найменший завеликий — беремо найменший
+        if (balanced.isEmpty()) return candidates.last() // even the smallest is too big — take the smallest
 
         val fullFov = balanced.filter { Math.abs(it.width.toDouble() / it.height - sensorAspect) < 0.02 }
         return (fullFov.ifEmpty { balanced }).maxByOrNull { it.pixels }
     }
 
     /**
-     * Найбільша частота кадрів для кожної роздільності за даними камери: 1 / мінімальна тривалість кадру цього розміру.
-     * Обмежена верхньою межею діапазонів автоекспозиції — вище в прев'ю камера все одно не піде.
+     * Highest frame rate for each resolution according to the camera: 1 / the minimum frame duration of this size.
+     * Capped by the upper bound of the auto-exposure ranges — the preview will not go higher anyway.
      */
     private fun computeFrameRates(map: StreamConfigurationMap?, sizes: Array<Size>?, maxAeFps: Int): Map<String, Double> {
         val rates = HashMap<String, Double>()
@@ -1378,9 +1388,9 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Високошвидкісні режими камери: розміри з частотою понад 30 кадрів/с (напр. 1920×1080 і 1280×720 до 120).
-     * Для кожного береться діапазон з найвищою верхньою межею й найнижчою нижньою ([30,120] — у темряві
-     * камера може знизити частоту, а не лишитись без експозиції). Порожньо, якщо камера цього режиму не заявляє.
+     * High-speed modes of the camera: sizes with a rate above 30 fps (e.g. 1920×1080 and 1280×720 up to 120).
+     * For each, the range with the highest upper bound and the lowest lower bound is taken ([30,120] — in the dark
+     * the camera can lower the rate instead of being left without exposure). Empty if the camera does not declare this mode.
      */
     private fun readHighSpeedConfigs(capabilities: IntArray, map: StreamConfigurationMap?): List<HighSpeedConfig> {
         val configs = ArrayList<HighSpeedConfig>()
@@ -1411,7 +1421,7 @@ internal class CameraController private constructor(private val context: Context
         return configs.sortedByDescending { it.size.pixels }
     }
 
-    /** Діапазони цільової частоти кадрів, дозволені камерою для автоекспозиції (порожньо — невідомо). */
+    /** Target frame rate ranges allowed by the camera for auto-exposure (empty — unknown). */
     private fun readAeFpsRanges(ch: CameraCharacteristics): List<Pair<Int, Int>> = try {
         ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
             ?.map { it.lower to it.upper }
@@ -1422,8 +1432,8 @@ internal class CameraController private constructor(private val context: Context
     }
 
     /**
-     * Діапазон цільової частоти кадрів для вибраної роздільності: найвища верхня межа, не більша за заявлену для цього
-     * розміру, і найнижча нижня межа серед таких (у темряві камера, як і раніше, може подовжувати витримку).
+     * Target frame rate range for the chosen resolution: the highest upper bound not greater than the one declared for this
+     * size, and the lowest lower bound among those (in the dark the camera can still lengthen the exposure, as before).
      */
     private fun aeFpsRangeFor(spec: CameraSpec, resolution: CameraResolution?): Pair<Int, Int>? {
         if (resolution == null || spec.aeFpsRanges.isEmpty()) return null
@@ -1443,7 +1453,7 @@ internal class CameraController private constructor(private val context: Context
     }
 
     // =====================================================================
-    // Колбеки Camera2
+    // Camera2 callbacks
     // =====================================================================
 
     private inner class DeviceCb(private val generation: Int) : CameraDevice.StateCallback() {
@@ -1467,7 +1477,7 @@ internal class CameraController private constructor(private val context: Context
             onSessionConfigureFailed(generation, resolution, highSpeed, withStill)
     }
 
-    /** Результат знімка: успіх приходить через ImageReader, а тут лише помилка. */
+    /** Result of the photo: success arrives via ImageReader, and here only the error. */
     private inner class StillCb : CameraCaptureSession.CaptureCallback() {
         override fun onCaptureFailed(session: CameraCaptureSession, request: CaptureRequest, failure: android.hardware.camera2.CaptureFailure) {
             Log.w(TAG, "Still capture failed: reason ${failure.reason}")
@@ -1481,25 +1491,25 @@ internal class CameraController private constructor(private val context: Context
     }
 
     companion object {
-        private const val FOCUS_HOLD_MS = 1200L      // скільки тримати блокування фокусу після дотику
-        private const val FOCUS_TIMEOUT_MS = 4000L   // максимум очікування результату фокусування
+        private const val FOCUS_HOLD_MS = 1200L      // how long to hold the focus lock after a touch
+        private const val FOCUS_TIMEOUT_MS = 4000L   // maximum wait for the focus result
         private const val MAX_RETRY_DELAY_MS = 8000L
         private const val DEFAULT_PREVIEW_PIXELS = 1920L * 1080L
         private const val FPS_WINDOW_NS = 1_000_000_000L
         private const val CAPABILITIES_FALLBACK_MS = 1500L
         private const val JPEG_QUALITY: Byte = 95
-        private const val CAPTURE_WAIT_FOR_FOCUS_MS = 1500L // скільки знімок чекає на фокус по дотику
+        private const val CAPTURE_WAIT_FOR_FOCUS_MS = 1500L // how long a photo waits for tap focus
 
         /**
-         * Максимум зуму, який пропонуємо на задній камері Huawei/Honor. Стандартний Camera2 там заявляє лише 6x, а власний
-         * додаток камери — 10x (у характеристиках камери: opticalMaxZoomValue = 10). Перевірено на Honor 10: драйвер виконує
-         * область кадрування до 10x і далі (аж до ~14x), але на ~16x ЗАВИСАЄ (потік камери блокується на десятки секунд),
-         * тому більше 10x не пропонуємо. Для інших виробників залишаємо заявлене значення: як їхні драйвери поводяться
-         * понад нього, невідомо, а зависання камери гірше за відсутність зуму.
+         * Maximum zoom we offer on the Huawei/Honor back camera. Standard Camera2 declares only 6x there, while the manufacturer's
+         * own camera app has 10x (in the camera characteristics: opticalMaxZoomValue = 10). Verified on the Honor 10: the driver applies
+         * a crop region up to 10x and further (up to ~14x), but at ~16x it HANGS (the camera thread blocks for tens of seconds),
+         * so we do not offer more than 10x. For other manufacturers we keep the declared value: how their drivers behave
+         * beyond it is unknown, and a camera hang is worse than the lack of zoom.
          */
         private const val HUAWEI_MAX_ZOOM = 10f
 
-        /** Якщо інтерфейс так і не підключився (процес запущено не для показу екрана) — камеру не тримаємо. */
+        /** If the UI never connected (the process was started not to show the screen) — we do not keep the camera. */
         private const val WARM_UP_TIMEOUT_MS = 15_000L
 
         private val isHuaweiFamily: Boolean
@@ -1507,21 +1517,21 @@ internal class CameraController private constructor(private val context: Context
                 Build.BRAND.equals("HONOR", ignoreCase = true) ||
                 Build.MANUFACTURER.equals("HONOR", ignoreCase = true)
 
-        // Спільний екземпляр на весь процес: камеру можна прогріти ще до створення інтерфейсу.
+        // A shared instance for the whole process: the camera can be warmed up even before the UI is created.
         private val sharedLock = Any()
-        // Контролер тримає лише ApplicationContext (див. getShared), тож витоку активності тут немає.
+        // The controller holds only the ApplicationContext (see getShared), so there is no activity leak here.
         @SuppressLint("StaticFieldLeak")
         private var shared: CameraController? = null
 
-        /** Єдиний контролер процесу. Інтерфейс підключається до нього, а не створює власний. */
+        /** The only controller of the process. The UI connects to it rather than creating its own. */
         fun getShared(context: Context): CameraController = synchronized(sharedLock) {
             shared ?: CameraController(context.applicationContext ?: context).also { shared = it }
         }
 
         /**
-         * Починає відкривати камеру одразу при старті процесу — паралельно зі створенням інтерфейсу
-         * (це сотні мілісекунд, які раніше камера просто чекала). Нічого не робить без дозволу на камеру.
-         * Уся робота (читання налаштувань, характеристики камери) — на потоці камери, не на головному.
+         * Starts opening the camera right at process start — in parallel with the UI creation
+         * (hundreds of milliseconds during which the camera used to just wait). Does nothing without the camera permission.
+         * All the work (reading settings, camera characteristics) is on the camera thread, not the main one.
          */
         fun warmUp(context: Context) {
             try {
@@ -1532,8 +1542,8 @@ internal class CameraController private constructor(private val context: Context
                     val prefs = Prefs(context)
                     val cameraId = prefs.cameraId
                     controller.wantCameraId = cameraId
-                    // Збережену роздільність підхоплюємо вже тут: інакше перша сесія стартувала б зі стандартною
-                    // і одразу перебудовувалась би, щойно інтерфейс повідомить обрану.
+                    // We pick up the saved resolution already here: otherwise the first session would start with the default one
+                    // and immediately be rebuilt as soon as the UI reports the chosen one.
                     controller.wantResolution = cameraId?.let(prefs::resolution)
                     controller.wantActive = true
                     controller.reconcile()

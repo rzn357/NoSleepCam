@@ -19,20 +19,20 @@ import android.widget.FrameLayout
 import com.example.nosleepcam.StartupTrace
 
 /**
- * Нативний елемент: TextureView з попереднім переглядом камери + кільце фокусу.
- * Вписує кадр у доступну область без спотворень (з чорними полями) і правильно
- * повертає його при будь-якій орієнтації екрана.
+ * Native view: a TextureView with the camera preview + the focus ring.
+ * Fits the frame into the available area without distortion (with black bars) and rotates
+ * it correctly in any screen orientation.
  */
 internal class CameraPreviewView(context: Context) :
     FrameLayout(context), TextureView.SurfaceTextureListener, CameraListener {
 
-    /** Перший кадр камери показано (викликається в UI-потоці). */
+    /** The first camera frame is shown (called on the UI thread). */
     var onFirstFrame: (() -> Unit)? = null
 
-    /** Подвійний тап по екрану — знімок (перший тап одразу запускає фокус, як і звичайний тап). */
+    /** Double tap on the screen — photo (the first tap starts focusing immediately, like a regular tap). */
     var onDoubleTapped: (() -> Unit)? = null
 
-    // Контролер спільний для всього процесу: камера могла бути прогріта ще до створення цього елемента.
+    // The controller is shared by the whole process: the camera may have been warmed up before this view was created.
     private val controller = CameraController.getShared(context)
     private val texture = TextureView(context)
     private val indicator: FocusIndicatorView
@@ -40,7 +40,7 @@ internal class CameraPreviewView(context: Context) :
     private val displayListener = DisplayListener()
     private val transform = Matrix()
     private val inverse = Matrix()
-    private val imageRect = RectF() // де на екрані зображення камери (без чорних полів)
+    private val imageRect = RectF() // where on screen the camera image is (without black bars)
     private var geometry: PreviewGeometry? = null
     private var firstFrameReported = false
     private var draggingExposure = false
@@ -52,7 +52,7 @@ internal class CameraPreviewView(context: Context) :
         texture.surfaceTextureListener = this
         addView(texture, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
-        // Індикатор фокусу й яскравості займає весь елемент: дотики він не обробляє (див. onTouchEvent нижче).
+        // The focus and brightness indicator covers the whole view: it does not handle touches (see onTouchEvent below).
         indicator = FocusIndicatorView(context)
         indicator.onExposureChanged = { controller.setExposureCompensation(it) }
         addView(indicator, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -61,7 +61,7 @@ internal class CameraPreviewView(context: Context) :
     }
 
     // ---------------------------------------------------------------------
-    // Життєвий цикл
+    // Lifecycle
     // ---------------------------------------------------------------------
 
     override fun onAttachedToWindow() {
@@ -74,7 +74,7 @@ internal class CameraPreviewView(context: Context) :
     override fun onDetachedFromWindow() {
         removeCallbacks(resetExposureRunnable)
         displayManager()?.unregisterDisplayListener(displayListener)
-        // Контролер спільний, тож його не знищуємо — лише відписуємось.
+        // The controller is shared, so we don't destroy it — we only unsubscribe.
         controller.removeListener(this)
         super.onDetachedFromWindow()
     }
@@ -82,7 +82,7 @@ internal class CameraPreviewView(context: Context) :
     private fun displayManager() = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
 
     // ---------------------------------------------------------------------
-    // Події контролера (потік камери → UI-потік)
+    // Controller events (camera thread → UI thread)
     // ---------------------------------------------------------------------
 
     override fun onGeometry(geometry: PreviewGeometry) {
@@ -110,31 +110,31 @@ internal class CameraPreviewView(context: Context) :
 
     override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
         controller.onSurfaceDestroyed(surface)
-        return false // текстуру звільняє контролер після закриття камери
+        return false // the texture is released by the controller after the camera is closed
     }
 
     override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {
         if (firstFrameReported) return
 
         firstFrameReported = true
-        StartupTrace.mark { "ПЕРШИЙ КАДР камери на екрані" }
+        StartupTrace.mark { "FIRST camera FRAME on screen" }
         onFirstFrame?.invoke()
     }
 
     // ---------------------------------------------------------------------
-    // Поворот і вписування кадру
+    // Rotation and fitting of the frame
     // ---------------------------------------------------------------------
 
-    /** Чи можна зараз зробити знімок (є JPEG-потік, не високошвидкісний режим). */
+    /** Whether a photo can be taken now (there is a JPEG stream, not high-speed mode). */
     val canCapture: Boolean get() = geometry?.canCapture == true
 
-    /** Поточний поворот екрана: 0/90/180/270. */
+    /** Current screen rotation: 0/90/180/270. */
     val displayRotation: Int get() = displayRotationDegrees()
 
-    /** Ховає індикатор фокусу (напр. коли дотик виявився першим тапом подвійного). */
+    /** Hides the focus indicator (e.g. when the touch turned out to be the first tap of a double tap). */
     fun hideIndicator() = indicator.hideNow()
 
-    /** Застигле зображення камери для анімації знімка; null — ще нема кадра. Лише з UI-потоку. */
+    /** Frozen camera image for the capture animation; null — no frame yet. UI thread only. */
     fun snapshot(): PreviewSnapshot? {
         val w = texture.width
         val h = texture.height
@@ -157,10 +157,10 @@ internal class CameraPreviewView(context: Context) :
     }
 
     /**
-     * TextureView розтягує зображення на всю свою площу, тому будуємо матрицю, яка:
-     * 1) повертає пропорції «природного» кадру (камера вже повернула його під натуральну орієнтацію пристрою),
-     * 2) додатково повертає кадр на кут повороту екрана,
-     * 3) вписує результат у область з чорними полями (без обрізання).
+     * TextureView stretches the image over its whole area, so we build a matrix that:
+     * 1) restores the proportions of the "natural" frame (the camera has already rotated it to the device's natural orientation),
+     * 2) additionally rotates the frame by the screen rotation angle,
+     * 3) fits the result into the area with black bars (no cropping).
      */
     private fun updateTransform() {
         val geometry = geometry
@@ -173,7 +173,7 @@ internal class CameraPreviewView(context: Context) :
         val contentH = (if (sensorSwapped) geometry.bufferWidth else geometry.bufferHeight).toFloat()
 
         val rotation = displayRotationDegrees()
-        // Задня камера: додатковий поворот проти екрана; передня — за екраном.
+        // Back camera: extra rotation against the screen; front camera — along with the screen.
         val extra = if (geometry.isFront) rotation else (360 - rotation) % 360
         val swapped = extra % 180 != 0
         val rotatedW = if (swapped) contentH else contentW
@@ -204,13 +204,13 @@ internal class CameraPreviewView(context: Context) :
     }
 
     // ---------------------------------------------------------------------
-    // Дотик: фокус у вибраній точці
+    // Touch: focus at the chosen point
     // ---------------------------------------------------------------------
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            // Палець на «сонечку» яскравості — це не дотик для фокусу, а регулювання яскравості.
+            // A finger on the brightness "sun" is not a touch for focus but a brightness adjustment.
             MotionEvent.ACTION_DOWN -> if (indicator.hitSun(event.x, event.y)) {
                 draggingExposure = true
                 indicator.beginDrag(event.y)
@@ -237,19 +237,19 @@ internal class CameraPreviewView(context: Context) :
         val geometry = geometry
         if (geometry == null || !geometry.isValid || texture.width == 0 || texture.height == 0) return
 
-        // Ні фокусу, ні яскравості (напр. високошвидкісний режим): індикатор нічого не означав би.
+        // Neither focus nor brightness (e.g. high-speed mode): the indicator would mean nothing.
         if (!geometry.canTap) return
 
-        // Екранні координати → координати «природного» кадру (зворотна матриця вписування).
+        // Screen coordinates → coordinates of the "natural" frame (inverse of the fitting matrix).
         val point = floatArrayOf(x, y)
         inverse.mapPoints(point)
         val s = point[0] / texture.width
         val t = point[1] / texture.height
-        if (s < 0 || s > 1 || t < 0 || t > 1) return // дотик по чорних полях
+        if (s < 0 || s > 1 || t < 0 || t > 1) return // touch on the black bars
 
         indicator.showAt(x, y)
-        // Новий дотик скидає яскравість, як у камері Huawei, але не одразу: це може бути перший тап подвійного (знімок),
-        // і тоді знімок має вийти з тією яскравістю, яку виставив користувач.
+        // A new touch resets the brightness, as in the Huawei camera, but not immediately: it may be the first tap of a double tap (photo),
+        // and then the photo must come out with the brightness the user has set.
         removeCallbacks(resetExposureRunnable)
         postDelayed(resetExposureRunnable, ViewConfiguration.getDoubleTapTimeout().toLong())
         controller.focusAt(s, t)
@@ -271,7 +271,7 @@ internal class CameraPreviewView(context: Context) :
     }
 }
 
-/** Знімок прев'ю: [bitmap] (зменшений), [imageInBitmap] — область зображення в ньому, [imageOnScreen] — де воно на екрані. */
+/** Preview snapshot: [bitmap] (downscaled), [imageInBitmap] — the image area within it, [imageOnScreen] — where it is on screen. */
 internal class PreviewSnapshot(val bitmap: Bitmap, val imageInBitmap: Rect, val imageOnScreen: RectF)
 
 private const val SNAPSHOT_SCALE = 0.5f

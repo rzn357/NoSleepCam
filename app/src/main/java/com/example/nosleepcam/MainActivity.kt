@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
@@ -35,8 +36,8 @@ import com.example.nosleepcam.ui.CameraOverlay
 import com.example.nosleepcam.ui.SettingsPanel
 
 /**
- * Єдиний екран: камера на весь екран, а поверх — повзунок зуму, спалах і налаштування.
- * Камера працює, доки додаток відкритий; екран не гасне.
+ * Single screen: full-screen camera with the zoom slider, flash and settings on top.
+ * The camera keeps running while the app is open; the screen never turns off.
  */
 class MainActivity : Activity() {
 
@@ -45,7 +46,7 @@ class MainActivity : Activity() {
     private lateinit var prefs: Prefs
     private lateinit var root: FrameLayout
 
-    // Створюються пізніше, ніж сама активність — щоб перший кадр камери з'явився якнайшвидше.
+    // Created later than the activity itself, so that the first camera frame appears as soon as possible.
     private var overlay: CameraOverlay? = null
     private var settingsPanel: SettingsPanel? = null
 
@@ -61,20 +62,20 @@ class MainActivity : Activity() {
     private var frameRate = 0
     private var zoomFactor = 1.0
     private var flashOn = false
-    private var highSpeed = false // високошвидкісний режим; навмисно не зберігається між запусками
+    private var highSpeed = false // high-speed mode; deliberately not persisted between launches
     private var backCallback: Any? = null
 
     private lateinit var previewView: CameraPreviewView
     private var captureAnimation: CaptureAnimationView? = null
-    private var capturing = false             // анімація знімка триває — нові подвійні тапи ігноруємо
+    private var capturing = false             // capture animation in progress — new double taps are ignored
     private var thumbnailBeforeCapture: Bitmap? = null
     private var lastPhotoUri: Uri? = null
 
-    /** У ландшафті камера на весь екран (системні панелі сховано), у портреті — із чорними панелями. */
+    /** In landscape the camera fills the whole screen (system bars hidden); in portrait it has black bars. */
     private val isLandscape: Boolean
         get() = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    /** Події камери приходять із фонового потоку — переводимо їх в UI-потік (порядок зберігається). */
+    /** Camera events arrive on a background thread — post them to the UI thread (the order is preserved). */
     private val cameraListener = object : CameraListener {
         override fun onCapabilities(capabilities: CameraCapabilities) {
             ui.post { onCapabilitiesChanged(capabilities) }
@@ -108,22 +109,27 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------------
-    // Життєвий цикл: камера працює, доки додаток відкритий
+    // Lifecycle: the camera runs while the app is open
     // ------------------------------------------------------------------
 
+    /** Applies the app language: the user's choice, else the system language if supported, else English. */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLanguage.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
-        StartupTrace.mark { "MainActivity.onCreate: початок" }
+        StartupTrace.mark { "MainActivity.onCreate: start" }
         super.onCreate(savedInstanceState)
 
         prefs = Prefs(this)
         controller = CameraController.getShared(this)
 
-        // На старті в активності лише камера: так перший кадр з'являється якнайшвидше.
-        // Елементи керування (CameraOverlay) та вікно налаштувань (SettingsPanel) додаються пізніше.
-        // Дотик по кадру — фокус у цій точці.
+        // At startup the activity holds only the camera, so the first frame appears as soon as possible.
+        // The controls (CameraOverlay) and the settings panel (SettingsPanel) are added later.
+        // A touch on the frame sets focus at that point.
         root = FrameLayout(this)
         root.setBackgroundColor(Color.BLACK)
-        // Діагностика: `am start --ef nsc_slow 10` уповільнює анімацію знімка у 10 разів (лише у збірці з трасуванням).
+        // Diagnostics: `am start --ef nsc_slow 10` slows the capture animation down 10 times (trace builds only).
         if (BuildConfig.STARTUP_TRACE) CaptureAnimationView.timeScale = intent.getFloatExtra("nsc_slow", 1f)
 
         previewView = CameraPreviewView(this)
@@ -138,18 +144,18 @@ class MainActivity : Activity() {
             if (bottom - top != oldBottom - oldTop) overlay?.layoutFor(contentHeightDp())
         }
 
-        // Відновлюємо камеру та роздільність. Зум і спалах навмисно НЕ зберігаються:
-        // при кожному запуску додатка зум = 1x, спалах вимкнений.
+        // Restore the camera and the resolution. Zoom and flash are deliberately NOT persisted:
+        // on every app launch zoom = 1x and the flash is off.
         val savedCamera = prefs.cameraId
         selectedCameraId = savedCamera
         controller.setResolution(savedCamera?.let(prefs::resolution))
         controller.setCameraId(savedCamera)
         controller.addListener(cameraListener)
 
-        // Запасний варіант: якщо кадр не з'явиться (помилка камери тощо), керування все одно має зʼявитись.
+        // Fallback: if no frame ever appears (camera error etc.), the controls must still show up.
         ui.postDelayed({ ensureOverlay() }, OVERLAY_FALLBACK_DELAY_MS)
 
-        StartupTrace.mark { "MainActivity.onCreate: кінець" }
+        StartupTrace.mark { "MainActivity.onCreate: end" }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -159,7 +165,7 @@ class MainActivity : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        // Після повернення з іншого вікна або свайпу від краю системні панелі треба сховати знову.
+        // After returning from another window or an edge swipe, the system bars must be hidden again.
         if (hasFocus) applySystemBars()
     }
 
@@ -172,7 +178,7 @@ class MainActivity : Activity() {
         super.onResume()
         StartupTrace.mark { "MainActivity.onResume" }
 
-        // Дозвіл просимо лише при першому показі; далі (повернення з налаштувань тощо) — лише перевіряємо.
+        // The permission is requested only on the first show; later (returning from settings etc.) we only check it.
         startCamera(requestIfNeeded = !permissionRequested)
     }
 
@@ -187,22 +193,22 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    /** Висота області вмісту в dp (без системних панелей). */
+    /** Height of the content area in dp (without the system bars). */
     private fun contentHeightDp(): Double =
         (root.height - root.paddingTop - root.paddingBottom) / resources.displayMetrics.density.toDouble()
 
     // ------------------------------------------------------------------
-    // Поетапне створення інтерфейсу
+    // Staged UI construction
     // ------------------------------------------------------------------
 
     /**
-     * Елементи керування додаємо після першого кадра камери, а не разом з активністю:
-     * для появи зображення потрібен лише TextureView, а решта інтерфейсу коштує зайвий час.
+     * The controls are added after the first camera frame, not together with the activity:
+     * showing the image needs only the TextureView, and the rest of the UI costs extra time.
      */
     private fun ensureOverlay(): CameraOverlay {
         overlay?.let { return it }
 
-        StartupTrace.mark { "Створення елементів керування: початок" }
+        StartupTrace.mark { "Creating controls: start" }
         val overlay = CameraOverlay(this)
         overlay.onZoomChanged = { zoom ->
             zoomFactor = zoom
@@ -214,12 +220,12 @@ class MainActivity : Activity() {
         overlay.onOpenSystemSettingsClicked = ::openSystemSettings
         overlay.onThumbnailClicked = ::openLastPhoto
 
-        // Додаємо перед (під) вікном налаштувань, якщо воно вже існує.
+        // Added before (below) the settings panel, if it already exists.
         val panel = settingsPanel
         if (panel != null) root.addView(overlay, root.indexOfChild(panel)) else root.addView(overlay)
         this.overlay = overlay
 
-        // Підтягуємо все, що сталось, поки елементів ще не було.
+        // Catch up on everything that happened while the controls did not exist yet.
         capabilities?.let { overlay.setCapabilities(it, zoomFactor) }
         overlay.setFlash(flashOn)
         overlay.setHighSpeed(highSpeed)
@@ -228,12 +234,12 @@ class MainActivity : Activity() {
         overlay.setPermissionPanelVisible(permissionNeeded)
         overlay.layoutFor(contentHeightDp())
         loadLastPhotoThumbnail()
-        StartupTrace.mark { "Створення елементів керування: кінець" }
+        StartupTrace.mark { "Creating controls: end" }
         return overlay
     }
 
     // ------------------------------------------------------------------
-    // Камера та дозвіл
+    // Camera and permission
     // ------------------------------------------------------------------
 
     private fun startCamera(requestIfNeeded: Boolean) {
@@ -241,14 +247,14 @@ class MainActivity : Activity() {
         if (!granted && requestIfNeeded) {
             permissionRequested = true
             requestPermissions(arrayOf(Manifest.permission.CAMERA), REQUEST_CAMERA)
-            return // продовжимо в onRequestPermissionsResult
+            return // continue in onRequestPermissionsResult
         }
 
-        StartupTrace.mark { "Дозвіл на камеру перевірено (granted=$granted)" }
+        StartupTrace.mark { "Camera permission checked (granted=$granted)" }
 
         permissionNeeded = !granted
         if (!granted) {
-            // Запит дозволу треба показати одразу, не чекаючи на кадр, якого не буде.
+            // The permission prompt must be shown right away, without waiting for a frame that will never come.
             ensureOverlay()
             controller.setActive(false)
         }
@@ -256,7 +262,7 @@ class MainActivity : Activity() {
         overlay?.setPermissionPanelVisible(!granted)
         if (!granted) return
 
-        // Екран не гасне, поки відкритий додаток — інакше камера «засне» разом з екраном.
+        // The screen stays on while the app is open — otherwise the camera would "fall asleep" together with the screen.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         controller.setActive(true)
     }
@@ -269,11 +275,11 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == REQUEST_CAMERA) startCamera(requestIfNeeded = false)
-        // Для REQUEST_STORAGE нічого не робимо: користувач просто повторює подвійний тап.
+        // Nothing to do for REQUEST_STORAGE: the user simply repeats the double tap.
     }
 
     // ------------------------------------------------------------------
-    // Знімок по подвійному тапу
+    // Photo on double tap
     // ------------------------------------------------------------------
 
     private fun onDoubleTap() {
@@ -284,19 +290,19 @@ class MainActivity : Activity() {
             showTransientStatus(getString(R.string.photo_unavailable_high_speed))
             return
         }
-        if (capabilities == null) return // камера ще не готова
+        if (capabilities == null) return // the camera is not ready yet
         if (!previewView.canCapture) {
             showTransientStatus(getString(R.string.photo_unavailable))
             return
         }
-        // До Android 10 писати в галерею можна лише з дозволом на пам'ять.
+        // Before Android 10, writing to the gallery requires the storage permission.
         if (Build.VERSION.SDK_INT < 29 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             showTransientStatus(getString(R.string.photo_storage_permission))
             requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE)
             return
         }
 
-        // Коло-мініатюра має бути розкладене, щоб знати, куди летіти; щойно створений overlay розкладеться на наступному кадрі.
+        // The thumbnail circle must be laid out to know where to fly; a freshly created overlay gets laid out on the next frame.
         val overlay = ensureOverlay()
         val target = overlay.thumbnailBounds()
         if (target == null) {
@@ -307,22 +313,22 @@ class MainActivity : Activity() {
 
         val snapshot = previewView.snapshot() ?: return
         capturing = true
-        previewView.hideIndicator() // перший тап подвійного вже показав індикатор фокусу
+        previewView.hideIndicator() // the first tap of the double tap has already shown the focus indicator
         controller.capturePhoto(previewView.displayRotation)
         playCaptureAnimation(snapshot, overlay.thumbnailBounds() ?: target)
     }
 
-    /** «Блимання» затвора, а потім знімок зменшується й летить у коло в лівому нижньому куті. */
+    /** Shutter "blink", then the photo shrinks and flies into the circle in the bottom-left corner. */
     private fun playCaptureAnimation(snapshot: PreviewSnapshot, target: RectF) {
         val overlay = overlay ?: return
         val animation = captureAnimation ?: CaptureAnimationView(this).also {
             captureAnimation = it
-            // Над камерою й керуванням, але під вікном налаштувань.
+            // Above the camera and the controls, but below the settings panel.
             val panel = settingsPanel
             if (panel != null) root.addView(it, root.indexOfChild(panel)) else root.addView(it)
         }
 
-        // Мініатюра для кола: центральний квадрат знімка.
+        // Thumbnail for the circle: the central square of the photo.
         val inBitmap = snapshot.imageInBitmap
         val side = minOf(inBitmap.width(), inBitmap.height())
         val square = Bitmap.createBitmap(
@@ -336,7 +342,7 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Знімок не вдалося зберегти: повертаємо в коло попередній знімок і кажемо про це. */
+    /** The photo could not be saved: put the previous photo back into the circle and tell the user. */
     private fun onPhotoFailedOnUi() {
         if (isDestroyed) return
 
@@ -344,14 +350,14 @@ class MainActivity : Activity() {
         showTransientStatus(getString(R.string.photo_failed))
     }
 
-    /** Показує в колі останній знімок попереднього запуску (читається у фоні, щоб не гальмувати старт). */
+    /** Shows in the circle the last photo from the previous launch (read in the background so as not to slow down startup). */
     private fun loadLastPhotoThumbnail() {
         val saved = prefs.lastPhoto?.let(Uri::parse) ?: return
         lastPhotoUri = saved
         Thread {
             val bitmap = PhotoSaver.loadThumbnail(this, saved, THUMBNAIL_PX)
             ui.post {
-                // Якщо за цей час уже зроблено новий знімок, його не затираємо.
+                // If a new photo has been taken in the meantime, don't overwrite it.
                 if (bitmap != null && !isDestroyed && !capturing && overlay?.thumbnailImage == null) overlay?.setThumbnail(bitmap)
             }
         }.start()
@@ -365,7 +371,7 @@ class MainActivity : Activity() {
         try {
             startActivity(intent)
         } catch (_: ActivityNotFoundException) {
-            // Немає програми для перегляду зображень — нічого не робимо.
+            // No app to view images — do nothing.
         }
     }
 
@@ -375,7 +381,7 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------------
-    // Події камери (в UI-потоці)
+    // Camera events (on the UI thread)
     // ------------------------------------------------------------------
 
     private fun onCapabilitiesChanged(caps: CameraCapabilities) {
@@ -387,17 +393,17 @@ class MainActivity : Activity() {
         selectedCameraId = caps.camera.id
         controller.setCameraId(caps.camera.id)
 
-        // Камера (або її режим) високу частоту більше не підтримує — вимикаємо режим.
+        // The camera (or its mode) no longer supports the high rate — turn the mode off.
         if (highSpeed && caps.highSpeedFps == 0) {
             highSpeed = false
             controller.setHighSpeed(false)
             overlay?.setHighSpeed(false)
         }
 
-        // Запам'ятовуємо камеру, з якою працюємо, щоб при наступному запуску відновити її та обрану для неї роздільність.
+        // Remember the camera we work with, so that the next launch restores it and the resolution chosen for it.
         prefs.cameraId = caps.camera.id
 
-        // Зум: від 1x до апаратного максимуму камери.
+        // Zoom: from 1x to the camera's hardware maximum.
         val zoom = zoomFactor.coerceIn(caps.minZoom, maxOf(caps.minZoom, caps.maxZoom))
         if (zoom != zoomFactor) {
             zoomFactor = zoom
@@ -422,18 +428,18 @@ class MainActivity : Activity() {
 
         status = newStatus
 
-        // Повідомлення про проблему показуємо одразу, навіть якщо керування ще не створено.
+        // Show the problem message immediately, even if the controls have not been created yet.
         if (!newStatus.isNullOrEmpty()) ensureOverlay()
 
         overlay?.setStatus(newStatus)
     }
 
     // ------------------------------------------------------------------
-    // Спалах
+    // Flash
     // ------------------------------------------------------------------
 
     private fun onFlashClicked() {
-        // Іконка видима завжди; якщо в цієї камери спалаху немає — пояснюємо, чому нічого не відбулось.
+        // The icon is always visible; if this camera has no flash, explain why nothing happened.
         if (capabilities?.supportsFlash == false) {
             showTransientStatus(getString(R.string.flash_unavailable))
             return
@@ -449,7 +455,7 @@ class MainActivity : Activity() {
         overlay?.setFlash(flashOn)
     }
 
-    /** Коротке повідомлення на 2 секунди; потім повертаємо звичайний стан. */
+    /** Short message for 2 seconds; then the normal state returns. */
     private fun showTransientStatus(text: String) {
         val token = ++statusToken
         overlay?.setStatus(text)
@@ -459,12 +465,12 @@ class MainActivity : Activity() {
     }
 
     // ------------------------------------------------------------------
-    // Налаштування роздільної здатності
+    // Resolution settings
     // ------------------------------------------------------------------
 
     private val isSettingsOpen: Boolean get() = settingsPanel?.visibility == View.VISIBLE
 
-    /** Вікно налаштувань створюється лише при першому відкритті — це прискорює запуск. */
+    /** The settings panel is created only on the first open — this speeds up startup. */
     private fun ensureSettingsPanel(): SettingsPanel {
         settingsPanel?.let { return it }
 
@@ -473,6 +479,7 @@ class MainActivity : Activity() {
         panel.onCloseRequested = ::closeSettings
         panel.onResolutionChosen = ::onResolutionChosen
         panel.onCameraChosen = ::onCameraChosen
+        panel.onLanguageChosen = ::onLanguageChosen
         panel.onHighSpeedChanged = ::onHighSpeedChanged
         root.addView(panel)
         settingsPanel = panel
@@ -502,7 +509,7 @@ class MainActivity : Activity() {
         highSpeed = on
         controller.setHighSpeed(on)
 
-        // У високошвидкісній сесії спалаху немає (запит його не містить) — вимикаємо й показуємо це на іконці.
+        // A high-speed session has no flash (the request does not contain it) — turn it off and show that on the icon.
         if (on && flashOn) {
             flashOn = false
             controller.setFlash(false)
@@ -520,23 +527,33 @@ class MainActivity : Activity() {
         closeSettings()
     }
 
+    private fun onLanguageChosen(tag: String) {
+        if (tag == AppLanguage.effectiveTag(this)) return
+
+        prefs.language = tag
+        // Strings the camera controller already built (camera names) are in the old language.
+        controller.onLanguageChanged()
+        // Recreating the activity re-reads all resources in the new language; the camera reopens right after.
+        recreate()
+    }
+
     private fun onCameraChosen(camera: CameraDescriptor) {
         if (camera.id == selectedCameraId) return
 
         prefs.cameraId = camera.id
         selectedCameraId = camera.id
 
-        // Згадуємо останню роздільність, обрану саме для цієї камери (або null — підбере автоматично).
+        // Recall the last resolution chosen for this very camera (or null — it will be picked automatically).
         controller.setResolution(prefs.resolution(camera.id))
         controller.setCameraId(camera.id)
     }
 
     // ------------------------------------------------------------------
-    // Кнопка «Назад» закриває вікно налаштувань
+    // The "Back" button closes the settings panel
     // ------------------------------------------------------------------
 
-    // Для Android 13+ жест «Назад» обробляє OnBackInvokedCallback (див. setBackInterception), а цей метод
-    // лишається для старіших версій, де він і викликається.
+    // On Android 13+ the "Back" gesture is handled by an OnBackInvokedCallback (see setBackInterception), and this method
+    // remains for older versions, where it is the one that gets called.
     @SuppressLint("GestureBackNavigation")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -550,8 +567,8 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Android 13+ з жестом «Назад» не викликає onBackPressed — потрібен окремий обробник.
-     * Реєструємо його лише поки вікно налаштувань відкрите, щоб інакше «Назад» працювало як звичайно.
+     * Android 13+ does not call onBackPressed for the "Back" gesture — a separate handler is needed.
+     * We register it only while the settings panel is open, so that otherwise "Back" works as usual.
      */
     private fun setBackInterception(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < 33) return
@@ -570,10 +587,10 @@ class MainActivity : Activity() {
         const val REQUEST_CAMERA = 1
         const val REQUEST_STORAGE = 2
 
-        /** Розмір мініатюри з галереї (px): коло 40 dp ≈ 120 px, беремо із запасом. */
+        /** Gallery thumbnail size (px): a 40 dp circle ≈ 120 px, taken with a margin. */
         const val THUMBNAIL_PX = 160
 
-        /** Якщо перший кадр камери так і не з'явився, елементи керування все одно додаємо за цей час. */
+        /** If the first camera frame never appears, the controls are added anyway after this time. */
         const val OVERLAY_FALLBACK_DELAY_MS = 1500L
 
         const val TRANSIENT_STATUS_MS = 2000L

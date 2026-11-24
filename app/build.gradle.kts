@@ -2,8 +2,8 @@ plugins {
     alias(libs.plugins.android.application)
 }
 
-// -PstartupTrace=true вмикає мітки часу запуску й діагностику частоти кадрів у logcat
-// (теги NSC-Startup, NSC-Fps, NSC-Req). У звичайній збірці виклики повністю вилучаються R8.
+// -PstartupTrace=true enables startup timestamps and frame rate diagnostics in logcat
+// (tags NSC-Startup, NSC-Fps, NSC-Req). In a normal build the calls are removed entirely by R8.
 val startupTrace = providers.gradleProperty("startupTrace").map { it.toBoolean() }.orElse(false)
 
 android {
@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.nosleepcam"
-        // Android 7.0: так само, як було в MAUI-версії. Honor 10 підтримується.
+        // Android 7.0: same as in the MAUI version. The Honor 10 is supported.
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -31,13 +31,13 @@ android {
 
     buildTypes {
         release {
-            // Оптимізація R8 лише коду додатка. Шаблонний packageScope = androidx/kotlin/kotlinx змушував R8
-            // переписувати й stdlib, після чого release падав на старті (IllegalAccessError: kotlin.collections.f).
+            // R8 optimization of the app's own code only. The template's packageScope = androidx/kotlin/kotlinx made R8
+            // rewrite the stdlib too, after which release crashed at startup (IllegalAccessError: kotlin.collections.f).
             optimization {
                 enable = true
             }
-            // Особистий додаток без власного ключа: підписуємо debug-ключем, щоб Release-збірку
-            // (на ній і треба міряти швидкість запуску) можна було поставити на телефон.
+            // A personal app without its own key: we sign with the debug key so that the Release build
+            // (the one on which startup speed must be measured) can be installed on the phone.
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -47,8 +47,8 @@ android {
     }
 }
 
-// Додаток навмисно не залежить від AppCompat/Material/AndroidX: лише фреймворкові віджети та Kotlin stdlib —
-// менше класів для завантаження при холодному запуску.
+// The app deliberately does not depend on AppCompat/Material/AndroidX: only framework widgets and the Kotlin stdlib —
+// fewer classes to load on a cold start.
 dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)

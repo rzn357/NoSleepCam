@@ -1,5 +1,5 @@
-// Додаток навмисно без AndroidX, тож framework ExifInterface. Він використовується лише на Android 9 і старіших і лише для
-// власних знімків додатка (небезпечні випадки android.media.ExifInterface стосуються чужих файлів).
+// The app deliberately has no AndroidX, so the framework ExifInterface is used. It is used only on Android 9 and older and only for
+// the app's own photos (the unsafe cases of android.media.ExifInterface concern files from other sources).
 @file:SuppressLint("ExifInterface")
 
 package com.example.nosleepcam.camera
@@ -22,16 +22,16 @@ import java.io.File
 import java.io.IOException
 
 /**
- * Збереження знімків у галерею (папка DCIM/Camera, ім'я IMG_ГГГГММДД_ГГММСС.jpg — як у камері Huawei) і мініатюра
- * останнього знімка. З Android 10 пишемо через MediaStore без жодних дозволів; на старіших системах потрібен
- * дозвіл WRITE_EXTERNAL_STORAGE (його просить MainActivity перед знімком).
+ * Saving photos to the gallery (DCIM/Camera folder, name IMG_YYYYMMDD_HHMMSS.jpg — as in the Huawei camera) and the thumbnail
+ * of the last photo. From Android 10 we write via MediaStore without any permissions; older systems require
+ * the WRITE_EXTERNAL_STORAGE permission (MainActivity asks for it before taking a photo).
  */
 internal object PhotoSaver {
 
     private const val TAG = "NoSleepCam"
     private const val FOLDER = "DCIM/Camera"
 
-    /** Записує JPEG і повертає його адресу в галереї; null — не вдалося. Викликати не з UI-потоку. */
+    /** Writes the JPEG and returns its gallery URI; null — failed. Call off the UI thread. */
     fun save(context: Context, jpeg: ByteArray, takenAtMs: Long): Uri? = try {
         if (Build.VERSION.SDK_INT >= 29) Api29.save(context, jpeg, takenAtMs) else saveLegacy(context, jpeg, takenAtMs)
     } catch (ex: Exception) {
@@ -39,7 +39,7 @@ internal object PhotoSaver {
         null
     }
 
-    /** Мініатюра зображення за адресою (≈[sizePx] по більшій стороні); null — зображення вже нема. Не з UI-потоку. */
+    /** Thumbnail of the image at the URI (≈[sizePx] on the longer side); null — the image no longer exists. Not on the UI thread. */
     fun loadThumbnail(context: Context, uri: Uri, sizePx: Int): Bitmap? = try {
         if (Build.VERSION.SDK_INT >= 29) Api29.thumbnail(context, uri, sizePx) else thumbnailLegacy(context, uri, sizePx)
     } catch (ex: Exception) {
@@ -93,7 +93,7 @@ internal object PhotoSaver {
         return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, Matrix().apply { postRotate(degrees) }, true)
     }
 
-    // Виклики API 29+ — в окремому класі (див. SystemBarInsets: так клас PhotoSaver не посилається на них напряму).
+    // API 29+ calls are in a separate class (see SystemBarInsets: so the PhotoSaver class does not reference them directly).
     @SuppressLint("UseRequiresApi")
     @TargetApi(Build.VERSION_CODES.Q)
     private object Api29 {
@@ -104,7 +104,7 @@ internal object PhotoSaver {
                 put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                 put(MediaStore.Images.Media.DATE_TAKEN, takenAtMs)
                 put(MediaStore.Images.Media.RELATIVE_PATH, FOLDER)
-                // Поки файл пишеться, галерея його не показує (інакше в ній з'явиться напівзаписаний знімок).
+                // While the file is being written the gallery does not show it (otherwise a half-written photo would appear in it).
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val uri = resolver.insert(MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY), values)
@@ -116,7 +116,7 @@ internal object PhotoSaver {
                 values.put(MediaStore.Images.Media.IS_PENDING, 0)
                 resolver.update(uri, values, null, null)
             } catch (ex: Exception) {
-                // Прибираємо лише власний недописаний запис.
+                // We remove only our own unfinished entry.
                 resolver.delete(uri, null, null)
                 throw ex
             }

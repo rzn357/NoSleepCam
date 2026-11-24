@@ -22,21 +22,21 @@ import kotlin.math.pow
 import kotlin.math.sqrt
 
 /**
- * Вертикальний повзунок зуму поверх зображення камери — поведінка скопійована з камери Huawei (виміряно на Honor 10).
+ * Vertical zoom slider over the camera image — the behaviour is copied from the Huawei camera (measured on the Honor 10).
  *
- * **У спокої** — кільце з поточним збільшенням і короткий пунктир (три бліді крапки й яскрава кінцева). Кільце стоїть
- * у «слоті» по центру кадра, поки зум менший за 2x, і на 40 dp вище — від 2x; пунктир завжди з іншого боку кільця
- * (вгору на малому зумі, вниз на великому), а яскрава кінцева крапка стоїть там, де кільце буде після перемикання.
+ * **At rest** — a ring with the current magnification and a short dotted tail (three faint dots and a bright end one). The ring sits
+ * in a "slot" at the frame centre while the zoom is below 2x, and 40 dp higher from 2x on; the dotted tail is always on the other side of the ring
+ * (up at low zoom, down at high zoom), and the bright end dot sits where the ring will be after switching.
  *
- * **Дотики** (див. [ZoomZones]): шкалу відкриває лише дотик на кільці; тап по кінцевій крапці стрибком міняє зум
- * (1x ↔ 2x); усе інше повзунок не чіпає — дотик іде до кадра й запускає фокус.
+ * **Touches** (see [ZoomZones]): only a touch on the ring opens the scale; a tap on the end dot switches the zoom in a jump
+ * (1x ↔ 2x); the slider ignores everything else — the touch goes to the frame and triggers focus.
  *
- * **Шкала** (поки палець на кільці й ще ≈1 с після відпускання): пунктирна лінія симетрично навколо центру кадра, підписи
- * «10x» угорі й «1x» внизу, кільце з крапкою їде за пальцем 1:1 (відносно, палець не на кільці). Шкала логарифмічна:
- * однакові кроки по лінії дають однакову кратність, тож дрібний зум (1x…2x) лишається зручним навіть при великому
- * максимумі. Після відпускання в кільці знову значення, а за ≈1 с шкала згортається (кільце повертається в слот).
+ * **Scale** (while a finger is on the ring and for ≈1 s after release): a dotted line symmetric around the frame centre, labels
+ * "10x" at the top and "1x" at the bottom, the ring with a dot follows the finger 1:1 (relatively; the finger is not on the ring). The scale is logarithmic:
+ * equal steps along the line give equal ratios, so fine zoom (1x…2x) stays convenient even with a large
+ * maximum. After release the ring shows the value again, and after ≈1 s the scale collapses (the ring returns to its slot).
  *
- * Усі розміри в dp.
+ * All sizes are in dp.
  */
 class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) : View(context, attrs) {
 
@@ -46,11 +46,11 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private var minimum = 1.0
     private var maximum = 2.0
     private var current = 1.0
-    private var expand = 0f                   // 0 = компактно, 1 = шкала розгорнута
-    private var fingerDown = false            // палець на кільці (в кільці крапка, а не значення)
+    private var expand = 0f                   // 0 = compact, 1 = scale expanded
+    private var fingerDown = false            // finger on the ring (the ring shows a dot, not the value)
     private var dragStartY = 0f
     private var dragStartPosition = 0.0
-    private var tailSide = 0f                 // 0 = кільце в нижньому слоті, пунктир угору; 1 = у верхньому, пунктир униз
+    private var tailSide = 0f                 // 0 = ring in the lower slot, tail up; 1 = in the upper slot, tail down
     private var tailTarget = 0f
     private var expandedReported = false
 
@@ -75,20 +75,20 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         textSize = 12f * dp
     }
 
-    /** Користувач змінив збільшення (перетягуванням або стрибком за крапкою). */
+    /** The user changed the magnification (by dragging or by jumping via the dot). */
     var onValueChanged: ((Double) -> Unit)? = null
 
-    /** Палець торкнувся кільця / відпустив його (для великого числа посеред екрана). */
+    /** A finger touched the ring / lifted from it (for the big number in the middle of the screen). */
     var onInteractionStarted: (() -> Unit)? = null
 
     var onInteractionEnded: (() -> Unit)? = null
 
-    /** Шкала розгорнулась (true) або повністю згорнулась (false) — інші кнопки на цей час ховаються, як у Huawei. */
+    /** The scale expanded (true) or fully collapsed (false) — the other buttons are hidden meanwhile, as in Huawei. */
     var onExpandedChanged: ((Boolean) -> Unit)? = null
 
     init {
-        // Легка тінь, щоб білі елементи читались і на світлому зображенні. setShadowLayer для фігур (не лише тексту)
-        // надійно працює лише без апаратного прискорення, а повзунок малий, тож програмного шару достатньо.
+        // A light shadow so that the white elements are readable on a bright image too. setShadowLayer for shapes (not just text)
+        // works reliably only without hardware acceleration, and the slider is small, so a software layer is enough.
         setLayerType(LAYER_TYPE_SOFTWARE, null)
         val shadow = Color.argb(153, 0, 0, 0)
         for (paint in listOf(fillPaint, strokePaint, textPaint)) paint.setShadowLayer(3f * dp, 0f, 0f, shadow)
@@ -112,7 +112,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
             invalidate()
         }
 
-    /** Поточне збільшення. Програмна зміна не викликає [onValueChanged]. */
+    /** Current magnification. A programmatic change does not call [onValueChanged]. */
     var value: Double
         get() = current
         set(newValue) {
@@ -122,7 +122,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         }
 
     // ------------------------------------------------------------------
-    // Шкала й геометрія (dp у системі координат вигляду)
+    // Scale and geometry (dp in the view's coordinate system)
     // ------------------------------------------------------------------
 
     private fun positionOf(value: Double): Double =
@@ -131,15 +131,15 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private fun valueAt(position: Double): Double = minimum * (maximum / minimum).pow(position)
 
     private val heightDp: Float get() = height / dp
-    private val trackTop: Float get() = TRACK_INSET                 // позиція максимуму
-    private val trackBottom: Float get() = heightDp - TRACK_INSET   // позиція 1x
-    private val slotBottom: Float get() = (trackTop + trackBottom) / 2f // центр кадра: кільце на малому зумі
-    private val slotTop: Float get() = slotBottom - SLOT_GAP        // кільце від 2x
+    private val trackTop: Float get() = TRACK_INSET                 // position of the maximum
+    private val trackBottom: Float get() = heightDp - TRACK_INSET   // position of 1x
+    private val slotBottom: Float get() = (trackTop + trackBottom) / 2f // frame centre: the ring at low zoom
+    private val slotTop: Float get() = slotBottom - SLOT_GAP        // ring from 2x
 
-    /** Де кільце стоїть у спокої: у нижньому слоті, у верхньому або (під час переходу) між ними. */
+    /** Where the ring sits at rest: in the lower slot, in the upper one or (during a transition) between them. */
     private val idleRingY: Float get() = slotBottom + (slotTop - slotBottom) * tailSide
 
-    /** Де кільце зараз: у спокої — у слоті, на розгорнутій шкалі — на позиції свого зуму. */
+    /** Where the ring is now: at rest — in the slot, on the expanded scale — at the position of its zoom. */
     private val ringY: Float
         get() {
             val handleY = trackBottom - positionOf(current).toFloat() * (trackBottom - trackTop)
@@ -148,11 +148,11 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private val trackLengthPx: Float get() = (trackBottom - trackTop) * dp
 
-    /** Із якого боку кільця пунктир: −1 — угору, +1 — униз (за цільовим, а не проміжним значенням). */
+    /** Which side of the ring the dotted tail is on: −1 — up, +1 — down (by the target value, not the intermediate one). */
     private val tailDirection: Float get() = if (tailTarget < 0.5f) -1f else 1f
 
     // ------------------------------------------------------------------
-    // Жести: рух пальця рахуємо відносно місця дотику, тож кільце не «стрибає» під палець
+    // Gestures: the finger movement is computed relative to the touch point, so the ring does not "jump" under the finger
     // ------------------------------------------------------------------
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
@@ -160,7 +160,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
             MotionEvent.ACTION_DOWN -> {
                 gesture = classify(event.x, event.y)
                 when (gesture) {
-                    // Не наш дотик: повертаємо false, і він іде до кадра (фокус).
+                    // Not our touch: return false, and it goes to the frame (focus).
                     Gesture.None -> return false
                     Gesture.Drag -> {
                         parent?.requestDisallowInterceptTouchEvent(true)
@@ -176,7 +176,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
             MotionEvent.ACTION_MOVE -> when (gesture) {
                 Gesture.Drag -> drag(event.y)
-                // Палець поїхав — це вже не тап по крапці.
+                // The finger moved — this is no longer a tap on the dot.
                 Gesture.Preset -> if (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop) gesture = Gesture.None
                 Gesture.None -> return false
             }
@@ -184,7 +184,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
             MotionEvent.ACTION_UP -> {
                 when (gesture) {
                     Gesture.Drag -> {
-                        performClick() // для служб доступності
+                        performClick() // for accessibility services
                         finishInteraction()
                     }
 
@@ -204,12 +204,12 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     override fun performClick(): Boolean = super.performClick()
 
-    /** Що робить дотик у точці (x, y) цього вигляду: тягне кільце, стрибає за крапкою чи не наш. */
+    /** What a touch at point (x, y) of this view does: drags the ring, jumps via the dot, or is not ours. */
     private fun classify(x: Float, y: Float): Gesture {
         val dx = x / dp - width / dp / 2f
         if (ZoomZones.hitsRing(dx, y / dp - ringY)) return Gesture.Drag
 
-        // Крапка-пресет є лише у згорнутому стані (на розгорнутій шкалі вона не показується).
+        // The preset dot exists only in the collapsed state (it is not shown on the expanded scale).
         if (expand < 0.05f && maximum > minimum) {
             val direction = tailDirection
             val dotY = idleRingY + direction * (RING_RADIUS + TAIL_STEP * TAIL_DOTS)
@@ -233,13 +233,13 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         if (length <= 0) return
 
         var position = (dragStartPosition + (dragStartY - y) / length).coerceIn(0.0, 1.0)
-        if (position < SNAP_TO_MIN_POSITION) position = 0.0 // біля низу «прилипаємо» рівно до мінімуму (1x)
+        if (position < SNAP_TO_MIN_POSITION) position = 0.0 // near the bottom we "snap" exactly to the minimum (1x)
 
         val newValue = valueAt(position)
         if (abs(newValue - current) < 1e-4) return
 
         current = newValue
-        updateTailSide(animated = false) // поки шкала розгорнута, пунктиру не видно — перекидаємо миттєво
+        updateTailSide(animated = false) // while the scale is expanded the tail is not visible — flip it instantly
         invalidate()
         onValueChanged?.invoke(newValue)
     }
@@ -252,7 +252,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         postDelayed(collapseRunnable, COLLAPSE_DELAY_MS)
     }
 
-    /** Тап по яскравій кінцевій крапці: на малому зумі — до 2x, на великому — назад до мінімуму. */
+    /** Tap on the bright end dot: at low zoom — to 2x, at high zoom — back to the minimum. */
     private fun jumpToPreset() {
         val target = if (tailTarget < 0.5f) minOf(maximum, TAIL_FLIP_ZOOM) else minimum
         val from = current
@@ -282,7 +282,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
         expandAnimator = ValueAnimator.ofFloat(expand, target).apply {
             duration = if (target > expand) EXPAND_MS else COLLAPSE_MS
-            interpolator = DecelerateInterpolator(1.5f) // ≈ кубічне уповільнення (CubicOut)
+            interpolator = DecelerateInterpolator(1.5f) // ≈ cubic deceleration (CubicOut)
             addUpdateListener {
                 expand = it.animatedValue as Float
                 invalidate()
@@ -300,8 +300,8 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     /**
-     * З якого боку кільця пунктир. Поріг — 2x (як у камері Huawei: 1,9x ще «вгору», 2,0x уже «вниз»); якщо камера
-     * не доходить до 2x, береться середина шкали, щоб пунктир усе ж міг перекинутись.
+     * Which side of the ring the dotted tail is on. The threshold is 2x (as in the Huawei camera: 1.9x is still "up", 2.0x already "down"); if the camera
+     * does not reach 2x, the middle of the scale is used so that the tail can still flip.
      */
     private fun updateTailSide(animated: Boolean) {
         val threshold = minOf(TAIL_FLIP_ZOOM, sqrt(minimum * maximum))
@@ -338,7 +338,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     // ------------------------------------------------------------------
-    // Малювання
+    // Drawing
     // ------------------------------------------------------------------
 
     override fun onDraw(canvas: Canvas) {
@@ -350,7 +350,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         val ringY = ringY
 
         if (expand > 0.01f) {
-            // Пунктирна лінія вздовж усієї шкали (під кільцем точки не малюємо); кінці — яскравіші.
+            // A dotted line along the whole scale (no dots under the ring); the ends are brighter.
             val top = trackTop
             val bottom = trackBottom
             var y = bottom
@@ -363,25 +363,25 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
                 y -= DOT_SPACING
             }
 
-            // Підписи за кінцями шкали; ховаються, коли кільце підійшло впритул (як у Huawei).
+            // Labels beyond the ends of the scale; hidden when the ring comes right up to them (as in Huawei).
             drawEndLabel(canvas, format(maximum), cx, top - LABEL_OFFSET, ringY, expand)
             drawEndLabel(canvas, format(minimum), cx, bottom + LABEL_OFFSET, ringY, expand)
         }
 
         if (expand < 0.99f) {
-            // «Хвіст» пунктиру: три бліді крапки й яскрава кінцева — підказка, куди можна тягнути кільце (і куди тапнути
-            // для стрибка). Перекидається з боку на бік за порогом зуму; під час переходу обидва боки змішуються.
+            // The dotted "tail": three faint dots and a bright end one — a hint where the ring can be dragged (and where to tap
+            // for a jump). It flips from side to side at the zoom threshold; during the transition both sides blend.
             val visible = 1f - expand
             drawTail(canvas, cx, idleRingY, -1f, visible * (1f - tailSide))
             drawTail(canvas, cx, idleRingY, +1f, visible * tailSide)
         }
 
-        // Кільце: усередині прозоре (без заливки), лише білий контур.
+        // The ring: transparent inside (no fill), only a white outline.
         whiteWithAlpha(strokePaint, 1f)
         canvas.drawCircle(cx * dp, ringY * dp, RING_RADIUS * dp, strokePaint)
 
         if (fingerDown) {
-            // Поки палець на кільці — у ньому крапка; значення видно на великому числі посеред екрана.
+            // While a finger is on the ring it shows a dot; the value is seen on the big number in the middle of the screen.
             whiteWithAlpha(fillPaint, 1f)
             canvas.drawCircle(cx * dp, ringY * dp, 2.6f * dp, fillPaint)
         } else {
@@ -399,8 +399,8 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     /**
-     * Пунктир від кільця: [direction] −1 — угору, +1 — униз. Розміри з виміру камери Huawei: крок 6 dp, перша крапка за
-     * 6 dp від краю кільця; три бліді крапки (чим ближче до кільця, тим блідіші) і яскрава кінцева.
+     * Dotted tail from the ring: [direction] −1 — up, +1 — down. Sizes measured on the Huawei camera: step 6 dp, the first dot
+     * 6 dp from the ring's edge; three faint dots (the closer to the ring, the fainter) and a bright end one.
      */
     private fun drawTail(canvas: Canvas, cx: Float, ringY: Float, direction: Float, strength: Float) {
         if (strength <= 0.01f) return
@@ -414,32 +414,32 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         }
     }
 
-    /** Білий колір із заданою непрозорістю (спершу колір — він скидає альфу). */
+    /** White colour with the given opacity (colour first — it resets the alpha). */
     private fun whiteWithAlpha(paint: Paint, alpha: Float) {
         paint.color = Color.WHITE
         paint.alpha = (alpha.coerceIn(0f, 1f) * 255).toInt()
     }
 
-    /** Текст по центру точки (cx, cy), координати в dp. */
+    /** Text centred at point (cx, cy), coordinates in dp. */
     private fun drawCentered(canvas: Canvas, text: String, cx: Float, cy: Float) {
         val metrics = textPaint.fontMetrics
         canvas.drawText(text, cx * dp, cy * dp - (metrics.ascent + metrics.descent) / 2f, textPaint)
     }
 
     companion object {
-        /** Відступ краю шкали від верху/низу вигляду (dp): місце для підписів і пунктиру під кільцем у слоті. */
+        /** Inset of the scale's end from the top/bottom of the view (dp): room for the labels and for the tail under the ring in the slot. */
         const val TRACK_INSET = 52f
 
         private const val RING_RADIUS = 16.5f
-        private const val TAIL_STEP = 6f          // крок пунктиру біля кільця, dp
-        private const val TAIL_DOTS = 4           // три бліді + яскрава кінцева
-        private const val SLOT_GAP = RING_RADIUS + TAIL_STEP * TAIL_DOTS // відстань між слотами = до кінцевої крапки
-        private const val TAIL_FLIP_ZOOM = 2.0    // від цього зуму кільце у верхньому слоті, а пунктир іде вниз
+        private const val TAIL_STEP = 6f          // tail step near the ring, dp
+        private const val TAIL_DOTS = 4           // three faint + a bright end one
+        private const val SLOT_GAP = RING_RADIUS + TAIL_STEP * TAIL_DOTS // distance between the slots = to the end dot
+        private const val TAIL_FLIP_ZOOM = 2.0    // from this zoom the ring is in the upper slot and the tail goes down
         private const val DOT_SPACING = 6f
-        private const val LABEL_OFFSET = 15f      // підпис «10x»/«1x» за кінцем шкали
+        private const val LABEL_OFFSET = 15f      // the "10x"/"1x" label beyond the end of the scale
         private const val SNAP_TO_MIN_POSITION = 0.012
 
-        private const val COLLAPSE_DELAY_MS = 1000L // скільки шкала лишається після відпускання (виміряно в Huawei)
+        private const val COLLAPSE_DELAY_MS = 1000L // how long the scale stays after release (measured in Huawei)
         private const val EXPAND_MS = 180L
         private const val COLLAPSE_MS = 380L
         private const val SLOT_SWAP_MS = 220L
@@ -449,7 +449,7 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         private var bigFormatter: DecimalFormat? = null
         private var formatterLocale: Locale? = null
 
-        /** Кеш форматувальників скидається, якщо мова пристрою змінилась. Лише з UI-потоку. */
+        /** The formatter cache is reset if the device language has changed. UI thread only. */
         private fun currentLocale(): Locale {
             val locale = Locale.getDefault()
             if (formatterLocale != locale) {
@@ -463,13 +463,13 @@ class ZoomSlider @JvmOverloads constructor(context: Context, attrs: AttributeSet
         private fun newFormat(pattern: String, locale: Locale) =
             DecimalFormat(pattern, DecimalFormatSymbols.getInstance(locale)).apply { roundingMode = RoundingMode.HALF_UP }
 
-        /** Текст збільшення без «x», з урахуванням мови пристрою: «1,5» або «2». Лише з UI-потоку. */
+        /** Magnification text without "x", honouring the device language: "1.5" or "2". UI thread only. */
         fun formatNumber(zoom: Double): String {
             val locale = currentLocale()
             return (formatter ?: newFormat("0.#", locale).also { formatter = it }).format(zoom)
         }
 
-        /** Велике число посеред екрана завжди з десятковим знаком, як у Huawei («2,0»). Лише з UI-потоку. */
+        /** The big number in the middle of the screen always has a decimal digit, as in Huawei ("2.0"). UI thread only. */
         fun formatBigNumber(zoom: Double): String {
             val locale = currentLocale()
             return (bigFormatter ?: newFormat("0.0", locale).also { bigFormatter = it }).format(zoom)

@@ -16,7 +16,7 @@ class PhotoMathTest {
 
     @Test
     fun backCameraInLandscapeCompensatesTheDisplayRotation() {
-        // Екран повернуто на 90° (пристрій на 270° за годинниковою): кадр сенсора вже «вгору».
+        // The screen is rotated by 90° (the device is at 270° clockwise): the sensor frame is already "up".
         assertEquals(0, PhotoMath.jpegOrientation(90, 90, false))
         assertEquals(180, PhotoMath.jpegOrientation(90, 270, false))
         assertEquals(270, PhotoMath.jpegOrientation(90, 180, false))

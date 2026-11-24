@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Об'єктив: кільце, внутрішній круг і блік. Усе в безпечній зоні адаптивної іконки (центральні 66dp із 108). -->
+<!-- Lens: ring, inner circle and highlight. All within the adaptive icon's safe zone (the central 66dp of 108). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"

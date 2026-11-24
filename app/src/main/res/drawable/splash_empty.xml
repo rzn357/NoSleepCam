@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Прозорий «значок» для системного сплеша Android 12+: сплеш — це просто чорний екран. -->
+<!-- A transparent "icon" for the Android 12+ system splash: the splash is simply a black screen. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
     <solid android:color="@android:color/transparent" />
     <size android:width="1dp" android:height="1dp" />

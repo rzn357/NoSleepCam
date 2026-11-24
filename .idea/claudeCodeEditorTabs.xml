@@ -1,20 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ClaudeCodeEditorTabs">
-    <option name="activeSessionId" value="83821ff7-e505-4c29-8470-ef71dfa1cf09" />
+    <option name="activeSessionId" value="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" />
     <option name="openSessionIds">
       <list>
-        <option value="83821ff7-e505-4c29-8470-ef71dfa1cf09" />
+        <option value="c43fef85-caf7-42c0-944d-56e8645033df" />
+        <option value="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" />
       </list>
     </option>
     <option name="sessionPaths">
       <map>
-        <entry key="83821ff7-e505-4c29-8470-ef71dfa1cf09" value="/sessions/fecc996f-4256-4ba2-b7f0-dda32521ebf5" />
+        <entry key="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" value="/sessions/9ce7c101-ea51-4c7c-ac32-82f4f419b306" />
+        <entry key="c43fef85-caf7-42c0-944d-56e8645033df" value="/sessions/e50ebb76-405d-4995-abfb-dc154d079e5a" />
       </map>
     </option>
     <option name="sessionTitles">
       <map>
-        <entry key="83821ff7-e505-4c29-8470-ef71dfa1cf09" value="AlwaysOnCameraSolution на Kotlin" />
+        <entry key="8f2f5847-5f2a-45fd-9bf8-efd0c5e9b7b4" value="Kotlin-проєкт для портфоліо на GitHub" />
+        <entry key="c43fef85-caf7-42c0-944d-56e8645033df" value="Приведи всі коментарі в коді на англійську. А тако" />
       </map>
     </option>
   </component>

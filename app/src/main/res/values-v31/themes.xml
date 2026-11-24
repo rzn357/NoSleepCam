@@ -1,7 +1,7 @@
 <resources>
     <!--
-        Android 12+: системний сплеш за замовчуванням малює іконку додатка. Робимо його «порожнім» чорним екраном,
-        який одразу переходить у чорний інтерфейс камери.
+        Android 12+: the system splash draws the app icon by default. We make it an "empty" black screen
+        that immediately transitions to the black camera UI.
     -->
     <style name="Theme.NoSleepCam" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/black</item>

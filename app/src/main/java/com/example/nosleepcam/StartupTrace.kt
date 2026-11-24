@@ -5,10 +5,10 @@ import android.os.SystemClock
 import android.util.Log
 
 /**
- * Діагностика часу запуску: пише в logcat (тег «NSC-Startup») мілісекунди від старту процесу.
- * У звичайній збірці [mark] і [req] зводяться до порожньої умови, яку R8 вилучає разом із побудовою рядка.
+ * Startup timing diagnostics: writes milliseconds since process start to logcat (tag "NSC-Startup").
+ * In a normal build [mark] and [req] reduce to an empty condition, which R8 removes together with building the string.
  *
- * Увімкнути: `./gradlew installRelease -PstartupTrace=true`, дивитись: `adb logcat -s NSC-Startup`.
+ * To enable: `./gradlew installRelease -PstartupTrace=true`, to watch: `adb logcat -s NSC-Startup`.
  */
 internal object StartupTrace {
 
@@ -19,12 +19,12 @@ internal object StartupTrace {
         }
     }
 
-    /** Діагностика запитів до камери (тег «NSC-Req»). */
+    /** Camera request diagnostics (tag "NSC-Req"). */
     inline fun req(message: () -> String) {
         if (BuildConfig.STARTUP_TRACE) message().let { if (it.isNotEmpty()) Log.i("NSC-Req", it) }
     }
 
-    /** Діагностика частоти кадрів: виміряна проти заявленої (тег «NSC-Fps»). */
+    /** Frame rate diagnostics: measured vs. declared (tag "NSC-Fps"). */
     inline fun fps(message: () -> String) {
         if (BuildConfig.STARTUP_TRACE) Log.i("NSC-Fps", message())
     }

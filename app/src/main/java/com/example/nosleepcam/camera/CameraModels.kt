@@ -5,13 +5,13 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
-/** Форматує число за шаблоном (напр. «0.#») з роздільником мови пристрою; середина округлюється вгору, як у .NET. */
+/** Formats a number with a pattern (e.g. "0.#") using the device language's separator; the midpoint rounds up, as in .NET. */
 internal fun formatNumber(value: Double, pattern: String): String =
     DecimalFormat(pattern, DecimalFormatSymbols.getInstance(Locale.getDefault()))
         .apply { roundingMode = RoundingMode.HALF_UP }
         .format(value)
 
-/** Розмір кадру попереднього перегляду, який підтримує камера. */
+/** A preview frame size supported by the camera. */
 data class CameraResolution(val width: Int, val height: Int) {
 
     val pixels: Long get() = width.toLong() * height
@@ -29,11 +29,11 @@ data class CameraResolution(val width: Int, val height: Int) {
             return formatNumber(ratio, "0.##") + ":1"
         }
 
-    /** Текст для списку вибору: «4000×3000 · 12,0 МП · 4:3». */
-    val displayName: String
-        get() = "$width×$height · ${formatNumber(megapixels, "0.0")} МП · $aspectRatio"
+    /** Text for the picker list: "4000×3000 · 12.0 MP · 4:3"; [megapixelUnit] is the localized "MP". */
+    fun displayName(megapixelUnit: String): String =
+        "$width×$height · ${formatNumber(megapixels, "0.0")} $megapixelUnit · $aspectRatio"
 
-    /** Стабільний ключ для збереження в налаштуваннях: «4000x3000». */
+    /** Stable key for saving in settings: "4000x3000". */
     val key: String get() = "${width}x$height"
 
     companion object {
@@ -56,38 +56,38 @@ data class CameraResolution(val width: Int, val height: Int) {
     }
 }
 
-/** Одна фізична/логічна камера пристрою (задня, передня тощо). */
+/** One physical/logical camera of the device (back, front, etc.). */
 data class CameraDescriptor(val id: String, val name: String)
 
-/** Можливості відкритої камери: що саме можна показати користувачу в інтерфейсі. */
+/** Capabilities of the opened camera: what can be shown to the user in the UI. */
 class CameraCapabilities(
     val camera: CameraDescriptor,
     val availableCameras: List<CameraDescriptor>,
 
-    /** Підтримувані роздільності, від найбільшої до найменшої. */
+    /** Supported resolutions, from the largest to the smallest. */
     val resolutions: List<CameraResolution>,
 
     /**
-     * Найбільша частота кадрів (к/с) для кожної роздільності за даними самої камери; ключ — [CameraResolution.key].
-     * Якщо камера не повідомила — запису немає. Це межа, а не гарантія: у слабкому освітленні автоекспозиція знижує частоту.
+     * Highest frame rate (fps) for each resolution according to the camera itself; the key is [CameraResolution.key].
+     * If the camera did not report it, there is no entry. This is a ceiling, not a guarantee: in low light auto-exposure lowers the rate.
      */
     val frameRates: Map<String, Double>,
 
-    /** Найбільша частота кадрів у високошвидкісному режимі (Camera2 constrained high-speed), напр. 120; 0 — не підтримується. */
+    /** Highest frame rate in high-speed mode (Camera2 constrained high-speed), e.g. 120; 0 — not supported. */
     val highSpeedFps: Int,
 
-    /** Розмір кадру у високошвидкісному режимі (камера дозволяє там лише кілька розмірів). */
+    /** Frame size in high-speed mode (the camera allows only a few sizes there). */
     val highSpeedResolution: CameraResolution?,
 
-    /** Максимальне збільшення, яке пропонується користувачу. */
+    /** Maximum magnification offered to the user. */
     val maxZoom: Double,
 
     val supportsAutoFocus: Boolean,
 
-    /** Чи має ця камера спалах (ліхтарик). Зазвичай є лише в задньої камери. */
+    /** Whether this camera has a flash (torch). Usually only the back camera does. */
     val supportsFlash: Boolean,
 
-    /** Чи вміє камера фокусуватись у вказаній точці (AF-регіони). */
+    /** Whether the camera can focus at a given point (AF regions). */
     val supportsTapToFocus: Boolean,
 ) {
     val minZoom: Double get() = 1.0
