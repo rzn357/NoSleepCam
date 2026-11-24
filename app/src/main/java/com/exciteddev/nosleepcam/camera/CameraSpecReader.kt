@@ -39,7 +39,7 @@ internal class CameraSpecReader(
                 sensorOrientation = ch.getOr(CameraCharacteristics.SENSOR_ORIENTATION, DEFAULT_SENSOR_ORIENTATION),
                 activeArray = active.toSensorRect(),
                 declaredMaxZoom = declaredMaxZoom,
-                maxZoom = CameraSpecRules.offeredMaxZoom(declaredMaxZoom, isHuaweiFamily && lens == LensFacing.Back),
+                offeredMaxZoom = CameraSpecRules.offeredMaxZoom(declaredMaxZoom, isHuaweiFamily && lens == LensFacing.Back),
                 afMode = afMode,
                 hasAfAuto = afModes.contains(CameraMetadata.CONTROL_AF_MODE_AUTO),
                 maxAfRegions = ch.getOr(CameraCharacteristics.CONTROL_MAX_REGIONS_AF, 0),

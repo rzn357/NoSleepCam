@@ -10,7 +10,10 @@ internal data class HighSpeedConfig(
     val upper: Int,
 )
 
-/** Everything the app needs to know about one camera, read once from its `CameraCharacteristics`. */
+/**
+ * Everything the app needs to know about one camera, read once from its `CameraCharacteristics`. Immutable: limits discovered
+ * while the camera runs (a zoom the driver does not honour, a rejected high-speed mode) are kept by the controller.
+ */
 internal class CameraSpec(
     val id: String,
     val lens: LensFacing,
@@ -18,8 +21,8 @@ internal class CameraSpec(
     val activeArray: SensorRect,
     /** Maximum digital zoom the camera declares through the standard API. */
     val declaredMaxZoom: Float,
-    /** Maximum we offer the user (≥ declared); lowered if the camera does not deliver it. */
-    var maxZoom: Float,
+    /** Maximum we offer the user (≥ declared); the controller lowers it if the camera turns out not to deliver it. */
+    val offeredMaxZoom: Float,
     val afMode: Int,
     /** The camera supports AUTO mode (needed for real tap focus, see CameraController.startFocus). */
     val hasAfAuto: Boolean,
@@ -43,10 +46,7 @@ internal class CameraSpec(
     val highSpeedConfigs: List<HighSpeedConfig>,
     val highSpeedAfMode: Int,
 ) {
-    /** The device rejected all high-speed modes — we do not offer them any more. */
-    var highSpeedBroken = false
-
     val isFront: Boolean get() = lens == LensFacing.Front
 
-    val supportsHighSpeed: Boolean get() = !highSpeedBroken && highSpeedConfigs.isNotEmpty()
+    val hasHighSpeed: Boolean get() = highSpeedConfigs.isNotEmpty()
 }

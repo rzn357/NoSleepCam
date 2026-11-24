@@ -110,6 +110,10 @@ internal class CameraController(
     private val blocked = HashSet<Pair<String, CameraResolution>>()
     private val blockedHighSpeed = HashSet<Pair<String, CameraResolution>>()
 
+    // Limits discovered while running; the specs themselves stay exactly as the system reported them.
+    private val zoomLimits = HashMap<String, Float>() // camera id → the zoom it really delivers (lower than offered)
+    private val highSpeedBroken = HashSet<String>() // cameras whose every high-speed size was rejected
+
     // ---- Desired state (written from any thread) ----
     @Volatile private var wantActive = false
 
@@ -391,7 +395,9 @@ internal class CameraController(
         applyRepeating()
     }
 
-    private fun highSpeedWanted(spec: CameraSpec) = wantHighSpeed && spec.supportsHighSpeed
+    private fun supportsHighSpeed(spec: CameraSpec) = spec.hasHighSpeed && spec.id !in highSpeedBroken
+
+    private fun highSpeedWanted(spec: CameraSpec) = wantHighSpeed && supportsHighSpeed(spec)
 
     /** The first high-speed size the device has not yet rejected (the largest — it is also the best). */
     private fun resolveHighSpeed(spec: CameraSpec): HighSpeedConfig? =
@@ -656,7 +662,7 @@ internal class CameraController(
             Log.w(LOG_TAG, "High-speed configure failed for ${resolution.key}")
 
             if (resolveHighSpeed(failedSpec) == null) {
-                failedSpec.highSpeedBroken = true
+                highSpeedBroken.add(failedSpec.id)
                 raiseStatus(CameraStatus.HighSpeedUnsupported)
             }
 
@@ -841,7 +847,10 @@ internal class CameraController(
     }
 
     /** Maximum zoom offered at the moment: in high-speed mode — only the one declared by the camera. */
-    private fun effectiveMaxZoom(spec: CameraSpec) = if (highSpeedWanted(spec)) spec.declaredMaxZoom else spec.maxZoom
+    private fun effectiveMaxZoom(spec: CameraSpec) = if (highSpeedWanted(spec)) spec.declaredMaxZoom else offeredMaxZoom(spec)
+
+    /** The zoom offered for this camera outside high-speed mode: what the spec says, unless the camera was seen not to deliver it. */
+    private fun offeredMaxZoom(spec: CameraSpec) = zoomLimits[spec.id] ?: spec.offeredMaxZoom
 
     private fun currentZoom(spec: CameraSpec) = wantZoom.coerceIn(1f, maxOf(1f, effectiveMaxZoom(spec)))
 
@@ -1161,17 +1170,18 @@ internal class CameraController(
         result: TotalCaptureResult,
     ) {
         val spec = spec ?: return
-        if (spec.maxZoom <= spec.declaredMaxZoom + 0.01f) return // we request within the declared range — nothing to check
+        val offered = offeredMaxZoom(spec)
+        if (offered <= spec.declaredMaxZoom + 0.01f) return // we request within the declared range — nothing to check
 
         val asked = request.get(CaptureRequest.SCALER_CROP_REGION)
         val applied = result.get(CaptureResult.SCALER_CROP_REGION)
         if (asked == null || applied == null || !SensorGeometry.isCropClamped(asked.width(), applied.width())) return
 
         val limit = SensorGeometry.achievedZoom(spec.activeArray.width, applied.width(), spec.declaredMaxZoom)
-        if (limit >= spec.maxZoom - 0.05f) return
+        if (limit >= offered - 0.05f) return
 
-        Log.w(LOG_TAG, "Camera ${spec.id} crops the requested zoom; max ${spec.maxZoom}x -> ${limit}x")
-        spec.maxZoom = limit
+        Log.w(LOG_TAG, "Camera ${spec.id} crops the requested zoom; max ${offered}x -> ${limit}x")
+        zoomLimits[spec.id] = limit
         if (wantZoom > limit) wantZoom = limit
 
         // The UI lowers the slider to the new maximum.
@@ -1225,7 +1235,7 @@ internal class CameraController(
     private fun buildCapabilities(id: String): CameraCapabilities {
         val spec = loadSpec(id)
         val cameras = listCameras()
-        val highSpeed = if (spec.supportsHighSpeed) resolveHighSpeed(spec) else null
+        val highSpeed = if (supportsHighSpeed(spec)) resolveHighSpeed(spec) else null
         return CameraCapabilities(
             camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, spec.lens),
             availableCameras = cameras,
