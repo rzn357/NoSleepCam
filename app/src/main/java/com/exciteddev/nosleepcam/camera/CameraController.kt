@@ -89,7 +89,12 @@ internal interface CameraListener {
  * All camera state changes happen on one background thread ([handler]).
  * External methods only remember the "desired state" and call [reconcile],
  * which brings the actual camera state to the desired one — so the order of calls does not matter.
+ *
+ * The pure parts live elsewhere ([CameraSpecReader], [CameraSpecRules], [SensorGeometry], [FrameRateMeter]). What remains
+ * is one state machine: the device, session, focus and still-photo callbacks all read and write the same mutable state on
+ * one thread, so it is deliberately kept in a single class instead of being scattered over objects that share that state.
  */
+@Suppress("LargeClass", "TooManyFunctions")
 internal class CameraController private constructor(
     private val context: Context,
 ) {

@@ -42,7 +42,10 @@ import com.exciteddev.nosleepcam.ui.message
 /**
  * Single screen: full-screen camera with the zoom slider, flash and settings on top.
  * The camera keeps running while the app is open; the screen never turns off.
+ *
+ * It only wires the camera layer to the views (lifecycle, permissions, events); the decisions it makes are in [ControlRules].
  */
+@Suppress("TooManyFunctions")
 class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private lateinit var controller: CameraController

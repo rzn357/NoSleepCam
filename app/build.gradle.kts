@@ -64,7 +64,6 @@ detekt {
     buildUponDefaultConfig = true
     config.setFrom(rootProject.file("config/detekt/detekt.yml"))
     source.setFrom("src/main/java", "src/test/java")
-    baseline = file("detekt-baseline.xml")
 }
 
 // The app deliberately does not depend on AppCompat/Material/AndroidX: only framework widgets and the Kotlin stdlib —
