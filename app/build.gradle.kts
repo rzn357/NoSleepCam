@@ -21,8 +21,6 @@ android {
         versionName = "1.0"
 
         buildConfigField("boolean", "STARTUP_TRACE", startupTrace.get().toString())
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildFeatures {
@@ -51,6 +49,4 @@ android {
 // fewer classes to load on a cold start.
 dependencies {
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
 }

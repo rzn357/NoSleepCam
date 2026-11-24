@@ -1,0 +1,11 @@
+# Normalize line endings: LF in the repository, regardless of the platform.
+* text=auto eol=lf
+
+# Windows scripts must keep CRLF.
+*.bat text eol=crlf
+
+# Binary files.
+*.png binary
+*.gif binary
+*.webp binary
+*.jar binary
