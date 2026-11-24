@@ -226,11 +226,21 @@ git config core.hooksPath .githooks
 (R8) builds on every push and pull request, and uploads the reports and the debug APK. Dependabot keeps the Gradle
 dependencies and the actions up to date.
 
-**Architecture in short.** The camera layer (`camera/`) knows nothing about views or strings: it reports data
+**Architecture in short.** The camera layer (`camera/`) knows nothing about views, strings or preferences: it reports data
 (`CameraCapabilities`, `CameraStatus`, `CameraDescriptor`) to a `CameraListener`, and the UI (`ui/`, `MainActivity`) turns it
-into text and pictures. Inside the camera layer the Camera2 state machine (`CameraController`) is kept apart from the parts that
-need no device and are unit-tested: reading characteristics (`CameraSpecReader` → `CameraSpecRules`), sensor geometry
-(`SensorGeometry`) and frame-rate measurement (`FrameRateMeter`).
+into text and pictures. The camera controller is created by `NoSleepCamApp` and handed to the activity (manual dependency
+injection, no singleton).
+
+- **Camera layer.** `CameraController` owns the device, the session and the desired state, all on one camera thread. The rest
+  runs on the same thread and gets the running camera as an `ActiveCamera`: `TapFocus` (regions, AUTO-mode switch, triggers),
+  `StillCapture` (the JPEG stream and the hand-over to the gallery), `RequestFactory` (building requests), `CameraCatalog`
+  (the cameras and their specs), `ZoomControl`, `HighSpeedPolicy` and `FrameRateReporter`. `CameraSpec` is immutable: limits found
+  while running live in the controller.
+- **Pure logic, unit-tested.** Everything that needs no device: `FocusRules` (what a tap does and the per-frame focus state
+  machine, including the Honor 10 workaround), `ZoomControl`, `HighSpeedPolicy`, `CameraSpecRules`, `SensorGeometry`,
+  `FrameRateMeter`, `PhotoMath`, `ControlRules`.
+- **Screen state.** `MainActivity` holds one immutable `CameraScreenState`. An event replaces it, and `render()` applies the
+  difference to the camera, the overlay and the settings panel — one-way data flow without a ViewModel or a library.
 
 ## Fast startup
 
@@ -284,7 +294,7 @@ Jetpack was made, so the comparisons are by architecture, not by stopwatch.
   assembled *after* the frame stream starts because both run on the same thread).
 - **This is not "no architecture".** The camera layer reports plain data to a `CameraListener` and knows nothing about views
   or strings; the pure logic (`SensorGeometry`, `FrameRateMeter`, `CameraSpecRules`, `ControlRules`, `PhotoMath`) is separated
-  and covered by 81 unit tests; ktlint, detekt and Android Lint (warnings are errors) gate every change.
+  and covered by 118 unit tests; ktlint, detekt and Android Lint (warnings are errors) gate every change.
 - **When I would choose Jetpack:** a multi-screen app, a team, or anything where a cold start of a few hundred milliseconds
   is not the product. Here it is.
 
@@ -298,9 +308,9 @@ Jetpack was made, so the comparisons are by architecture, not by stopwatch.
   computed from per-frame sensor timestamps; the 119 fps mode is a `createConstrainedHighSpeedCaptureSession`; the Huawei
   back camera reports 6x zoom while 10x works. Through CameraX all of these would go via `Camera2Interop` — Camera2 anyway,
   plus a second layer to carry.
-- **The price:** `CameraController` is the biggest file (≈1.3k lines) — the open/session/reconnect state machine that CameraX
-  would otherwise own. It is isolated behind a listener interface, and the rules that do not need a device are extracted
-  and tested.
+- **The price:** `CameraController` (≈800 lines with comments) is still the biggest file — the open/session/reconnect state
+  machine that CameraX would otherwise own. It is isolated behind a listener interface, tap focus, photos and request building
+  are separate classes, and the rules that do not need a device are extracted and tested.
 
 ### Why one Activity with `configChanges`
 
@@ -322,26 +332,32 @@ region). So for the duration of a touch the app switches to `CONTROL_AF_MODE_AUT
 `ACTIVE_SCAN`), and after a short hold returns to continuous mode with the same region; the lens stays in place. Verified on
 the Honor 10: different points give different, reproducible lens distances, and the sharpness of the chosen area grows ≈2.2 times.
 Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF state, region in the response, lens distance).
+The decisions (the tap plan, the AF mode of a request, the per-frame state machine) are in `FocusRules` and covered by unit tests.
 
 ## Project structure
 
 | File | Purpose |
 |---|---|
-| `NoSleepCamApp.kt` | `Application`: camera warm-up before the UI is created |
-| `MainActivity.kt` | the single screen: lifecycle, permission, wiring the camera to the UI |
+| `NoSleepCamApp.kt` | `Application`: creates the camera controller and warms the camera up before the UI is created |
+| `MainActivity.kt` | the single screen: lifecycle, permission, events → `CameraScreenState` → `render()` |
 | `ControlRules.kt` | what a tap on the flash or on the photo gesture should do (pure, tested) |
-| `camera/CameraController.kt` | the Camera2 state machine: opening, session, zoom, tap focus, photos, high-speed mode, reconnection |
+| `camera/CameraController.kt` | the Camera2 state machine: opening, the session, the desired state, reconnection |
+| `camera/TapFocus.kt`, `camera/FocusRules.kt` | tap to focus: regions, AUTO-mode switch, triggers; the pure decisions and the per-frame state machine (tested) |
+| `camera/StillCapture.kt`, `camera/RequestFactory.kt` | photos (JPEG stream, gallery hand-over); building preview, still and high-speed requests |
+| `camera/CameraCatalog.kt`, `camera/ZoomControl.kt`, `camera/HighSpeedPolicy.kt`, `camera/FrameRateReporter.kt` | the cameras and their cached specs; zoom limits; high-speed rejections; the measured frame rate |
+| `camera/CameraListener.kt`, `camera/ActiveCamera.kt` | what the camera reports to the UI; the running camera and what the parts need from the controller |
 | `camera/CameraSpec.kt`, `camera/CameraSpecReader.kt`, `camera/CameraSpecRules.kt` | what a camera can do: read from `CameraCharacteristics`, and the pure rules built on it (AF mode, sizes, frame rates, zoom limit) |
 | `camera/SensorGeometry.kt`, `camera/FrameRateMeter.kt` | zoom crop, visible area and tap-focus regions in sensor space; frame rate from sensor timestamps |
 | `camera/CameraModels.kt` | data passed to the UI: resolutions, capabilities, camera descriptors, statuses |
-| `camera/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
-| `camera/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
+| `ui/preview/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
+| `ui/preview/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
+| `ui/CameraScreenState.kt` | everything the screen shows as one immutable value, with the tested transitions |
 | `camera/ExposureCompensation.kt` | "sun" position ↔ EV index and label |
 | `camera/PhotoSaver.kt`, `camera/PhotoMath.kt` | writing to the gallery (MediaStore) and the thumbnail; JPEG orientation, size selection, file name |
 | `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
 | `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt`, `ui/CameraTexts.kt` | controls over the camera; the settings panel; user-facing texts for camera names and statuses |
 | `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
-| `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape) |
+| `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt`, `BackInterception.kt`, `NumberFormat.kt`, `LogTag.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape); the Android 13+ back gesture; locale-aware number formatting; the log tag |
 
 ## Known limitations
 
