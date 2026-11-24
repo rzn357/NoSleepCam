@@ -1,6 +1,6 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
-import com.example.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.camera.CameraResolution
 import java.util.Locale
 import org.junit.After
 import org.junit.Assert.assertEquals

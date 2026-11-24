@@ -174,7 +174,7 @@ Kotlin stdlib.
 > the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
 >
 > ```
-> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.example.nosleepcam.CameraResolutionTest com.example.nosleepcam.ExposureCompensationTest
+> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.exciteddev.nosleepcam.CameraResolutionTest com.exciteddev.nosleepcam.ExposureCompensationTest
 > ```
 >
 > (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
@@ -246,6 +246,6 @@ Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF sta
   the preview works without it, and a double tap shows "Photos are unavailable for this resolution".
 - The capture animation is modelled on the description and final look of the Huawei camera (a 40 dp circle in the bottom-left
   corner): on this phone its duration (<0.3 s) could not be measured, so the timings (≈0.5 s in total) were chosen by eye.
-  For debugging, a build with `-PstartupTrace=true` slows it down: `adb shell am start -n com.example.nosleepcam/.MainActivity --ef nsc_slow 10`.
+  For debugging, a build with `-PstartupTrace=true` slows it down: `adb shell am start -n com.exciteddev.nosleepcam/.MainActivity --ef nsc_slow 10`.
 - Landscape was verified on the Honor 10 with a forced orientation (both directions). Not verified on Android 15+ (insets
   from the system bars in portrait).

@@ -1,4 +1,4 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -23,17 +23,17 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
-import com.example.nosleepcam.camera.CameraCapabilities
-import com.example.nosleepcam.camera.CameraController
-import com.example.nosleepcam.camera.CameraDescriptor
-import com.example.nosleepcam.camera.CameraListener
-import com.example.nosleepcam.camera.CameraPreviewView
-import com.example.nosleepcam.camera.CameraResolution
-import com.example.nosleepcam.camera.PhotoSaver
-import com.example.nosleepcam.camera.PreviewSnapshot
-import com.example.nosleepcam.ui.CaptureAnimationView
-import com.example.nosleepcam.ui.CameraOverlay
-import com.example.nosleepcam.ui.SettingsPanel
+import com.exciteddev.nosleepcam.camera.CameraCapabilities
+import com.exciteddev.nosleepcam.camera.CameraController
+import com.exciteddev.nosleepcam.camera.CameraDescriptor
+import com.exciteddev.nosleepcam.camera.CameraListener
+import com.exciteddev.nosleepcam.camera.CameraPreviewView
+import com.exciteddev.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.camera.PhotoSaver
+import com.exciteddev.nosleepcam.camera.PreviewSnapshot
+import com.exciteddev.nosleepcam.ui.CaptureAnimationView
+import com.exciteddev.nosleepcam.ui.CameraOverlay
+import com.exciteddev.nosleepcam.ui.SettingsPanel
 
 /**
  * Single screen: full-screen camera with the zoom slider, flash and settings on top.

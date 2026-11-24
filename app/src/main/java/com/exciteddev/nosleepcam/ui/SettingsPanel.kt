@@ -1,4 +1,4 @@
-package com.example.nosleepcam.ui
+package com.exciteddev.nosleepcam.ui
 
 import android.app.AlertDialog
 import android.content.Context
@@ -13,10 +13,10 @@ import android.widget.FrameLayout
 import android.widget.ListView
 import android.widget.Switch
 import android.widget.TextView
-import com.example.nosleepcam.AppLanguage
-import com.example.nosleepcam.R
-import com.example.nosleepcam.camera.CameraDescriptor
-import com.example.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.AppLanguage
+import com.exciteddev.nosleepcam.R
+import com.exciteddev.nosleepcam.camera.CameraDescriptor
+import com.exciteddev.nosleepcam.camera.CameraResolution
 
 /** A resolution list row: frame size and the highest frame rate for it. */
 private class ResolutionItem(val resolution: CameraResolution, val title: String, val fpsText: String)

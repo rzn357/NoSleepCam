@@ -1,4 +1,4 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi

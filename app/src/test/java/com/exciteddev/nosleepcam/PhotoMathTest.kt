@@ -1,7 +1,7 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
-import com.example.nosleepcam.camera.CameraResolution
-import com.example.nosleepcam.camera.PhotoMath
+import com.exciteddev.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.camera.PhotoMath
 import java.util.Calendar
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

@@ -1,8 +1,8 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
 import android.app.Application
 import android.content.Context
-import com.example.nosleepcam.camera.CameraController
+import com.exciteddev.nosleepcam.camera.CameraController
 
 class NoSleepCamApp : Application() {
 

@@ -2,7 +2,7 @@
 // the app's own photos (the unsafe cases of android.media.ExifInterface concern files from other sources).
 @file:SuppressLint("ExifInterface")
 
-package com.example.nosleepcam.camera
+package com.exciteddev.nosleepcam.camera
 
 import android.annotation.SuppressLint
 import android.annotation.TargetApi

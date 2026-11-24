@@ -1,4 +1,4 @@
-package com.example.nosleepcam.ui
+package com.exciteddev.nosleepcam.ui
 
 import kotlin.math.abs
 

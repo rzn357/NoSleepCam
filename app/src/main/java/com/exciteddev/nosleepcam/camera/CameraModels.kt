@@ -1,4 +1,4 @@
-package com.example.nosleepcam.camera
+package com.exciteddev.nosleepcam.camera
 
 import java.math.RoundingMode
 import java.text.DecimalFormat

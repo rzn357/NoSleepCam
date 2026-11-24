@@ -1,7 +1,7 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
 import android.content.Context
-import com.example.nosleepcam.camera.CameraResolution
+import com.exciteddev.nosleepcam.camera.CameraResolution
 
 /**
  * Saved settings: the last camera and the resolution chosen for each camera.

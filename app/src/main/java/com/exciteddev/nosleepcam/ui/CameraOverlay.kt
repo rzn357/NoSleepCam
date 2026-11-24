@@ -1,4 +1,4 @@
-package com.example.nosleepcam.ui
+package com.exciteddev.nosleepcam.ui
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,8 +13,8 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
-import com.example.nosleepcam.R
-import com.example.nosleepcam.camera.CameraCapabilities
+import com.exciteddev.nosleepcam.R
+import com.exciteddev.nosleepcam.camera.CameraCapabilities
 
 /**
  * Controls over the camera: zoom slider, flash, gear, status and permission request.

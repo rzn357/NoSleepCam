@@ -1,4 +1,4 @@
-package com.example.nosleepcam.camera
+package com.exciteddev.nosleepcam.camera
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -16,7 +16,7 @@ import android.view.TextureView
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import com.example.nosleepcam.StartupTrace
+import com.exciteddev.nosleepcam.StartupTrace
 
 /**
  * Native view: a TextureView with the camera preview + the focus ring.

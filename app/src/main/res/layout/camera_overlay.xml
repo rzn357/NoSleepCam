@@ -7,7 +7,7 @@
 <merge xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Zoom slider over the image (on the right). Its height and top margin are set by CameraOverlay.layoutFor -->
-    <com.example.nosleepcam.ui.ZoomSlider
+    <com.exciteddev.nosleepcam.ui.ZoomSlider
         android:id="@+id/zoom_slider"
         android:layout_width="76dp"
         android:layout_height="320dp"
@@ -79,7 +79,7 @@
     </LinearLayout>
 
     <!-- Last photo: a small circle in the bottom-left corner; visible only when a photo already exists -->
-    <com.example.nosleepcam.ui.ThumbnailView
+    <com.exciteddev.nosleepcam.ui.ThumbnailView
         android:id="@+id/thumbnail"
         android:layout_width="40dp"
         android:layout_height="40dp"

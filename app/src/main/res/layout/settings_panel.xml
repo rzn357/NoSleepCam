@@ -14,7 +14,7 @@
         tools:ignore="KeyboardInaccessibleWidget" />
 
     <!-- clickable: touches on the card do not "fall through" to the dimming and do not close the panel -->
-    <com.example.nosleepcam.ui.MaxWidthLinearLayout
+    <com.exciteddev.nosleepcam.ui.MaxWidthLinearLayout
         android:id="@+id/card"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -195,6 +195,6 @@
                 android:background="#33FFFFFF" />
         </LinearLayout>
 
-    </com.example.nosleepcam.ui.MaxWidthLinearLayout>
+    </com.exciteddev.nosleepcam.ui.MaxWidthLinearLayout>
 
 </merge>

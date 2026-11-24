@@ -7,13 +7,13 @@ plugins {
 val startupTrace = providers.gradleProperty("startupTrace").map { it.toBoolean() }.orElse(false)
 
 android {
-    namespace = "com.example.nosleepcam"
+    namespace = "com.exciteddev.nosleepcam"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.example.nosleepcam"
+        applicationId = "com.exciteddev.nosleepcam"
         // Android 7.0: same as in the MAUI version. The Honor 10 is supported.
         minSdk = 24
         targetSdk = 37

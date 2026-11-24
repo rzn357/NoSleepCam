@@ -1,4 +1,4 @@
-package com.example.nosleepcam.camera
+package com.exciteddev.nosleepcam.camera
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -27,10 +27,10 @@ import android.util.Log
 import android.util.Range
 import android.util.Size
 import android.view.Surface
-import com.example.nosleepcam.AppLanguage
-import com.example.nosleepcam.Prefs
-import com.example.nosleepcam.R
-import com.example.nosleepcam.StartupTrace
+import com.exciteddev.nosleepcam.AppLanguage
+import com.exciteddev.nosleepcam.Prefs
+import com.exciteddev.nosleepcam.R
+import com.exciteddev.nosleepcam.StartupTrace
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean

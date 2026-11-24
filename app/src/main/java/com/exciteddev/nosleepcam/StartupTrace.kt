@@ -1,4 +1,4 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
 import android.os.Process
 import android.os.SystemClock

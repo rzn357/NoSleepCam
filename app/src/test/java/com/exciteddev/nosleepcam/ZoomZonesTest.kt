@@ -1,6 +1,6 @@
-package com.example.nosleepcam
+package com.exciteddev.nosleepcam
 
-import com.example.nosleepcam.ui.ZoomZones
+import com.exciteddev.nosleepcam.ui.ZoomZones
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
