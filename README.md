@@ -9,22 +9,12 @@ It opens the camera and keeps it live for as long as the app is open — and sta
 
 [![CI](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml/badge.svg)](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/github/license/rzn357/NoSleepCam?color=blue)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam/commits/main)
-[![Repo size](https://img.shields.io/github/repo-size/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam)
-[![Issues](https://img.shields.io/github/issues/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam/issues)
-[![Stars](https://img.shields.io/github/stars/rzn357/NoSleepCam?style=flat)](https://github.com/rzn357/NoSleepCam/stargazers)
-
 ![Platform](https://img.shields.io/badge/Android-7.0%2B_(API_24)-3DDC84?logo=android&logoColor=white)
 ![Language](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
-![Camera](https://img.shields.io/badge/Camera2-API-4285F4)
-![Dependencies](https://img.shields.io/badge/AndroidX%20%2F%20Material-none-brightgreen)
-![Code style](https://img.shields.io/badge/code%20style-ktlint-4c9aff)
-![Static analysis](https://img.shields.io/badge/static%20analysis-detekt-orange)
-![Languages](https://img.shields.io/badge/UI-English%20%7C%20%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D0%B0-blue)
 
 <br>
 
-<img src="docs/screenshots/demo.gif" alt="NoSleepCam demo: zoom, flash, tap to focus, brightness, settings and photo capture" width="300">
+<img src="docs/screenshots/demo.webp" alt="NoSleepCam demo: zoom, flash, tap to focus, brightness, settings and photo capture" width="300">
 
 <sub>Zoom · flash · tap to focus · brightness · settings · photo on double tap</sub>
 
@@ -59,6 +49,7 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 - [Features](#features)
 - [Build and install](#build-and-install)
 - [Development](#development)
+- [Architecture](#architecture)
 - [Fast startup](#fast-startup)
 - [Design decisions](#design-decisions)
 - [Tap to focus on the Honor 10](#tap-to-focus-on-the-honor-10)
@@ -71,29 +62,29 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 <table>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/main.png" alt="Main screen" width="230"><br>
+      <img src="docs/screenshots/main.webp" alt="Main screen" width="230"><br>
       <sub><b>Always-on camera</b><br>frame rate, flash, settings and the zoom slider</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/zoom.png" alt="Zoom scale" width="230"><br>
+      <img src="docs/screenshots/zoom.webp" alt="Zoom scale" width="230"><br>
       <sub><b>Zoom scale</b><br>logarithmic, up to 10x on the Honor 10</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/zoomed.png" alt="Zoomed to 3.4x" width="230"><br>
+      <img src="docs/screenshots/zoomed.webp" alt="Zoomed to 3.4x" width="230"><br>
       <sub><b>Zoomed in</b><br>the ring shows the current value</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/focus.png" alt="Tap to focus" width="230"><br>
+      <img src="docs/screenshots/focus.webp" alt="Tap to focus" width="230"><br>
       <sub><b>Tap to focus</b><br>four-corner indicator and the brightness “sun”</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/brightness.png" alt="Exposure compensation" width="230"><br>
+      <img src="docs/screenshots/brightness.webp" alt="Exposure compensation" width="230"><br>
       <sub><b>Brightness</b><br>drag the sun for exposure compensation</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/settings.png" alt="Settings" width="230"><br>
+      <img src="docs/screenshots/settings.webp" alt="Settings" width="230"><br>
       <sub><b>Settings</b><br>resolution, high-speed mode, camera, language</sub>
     </td>
   </tr>
@@ -115,7 +106,7 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 
 ### Zoom
 
-Zoom goes up to the maximum. The slider is a copy of the Huawei camera's slider (all sizes and boundaries were measured on
+Zoom goes up to the maximum. The slider is modelled on the Huawei camera's slider (all sizes and boundaries were measured on
 the Honor 10):
 
 - **At rest** — a ring with the current value and a short dotted tail (three faint dots and a bright end one). The ring sits
@@ -193,16 +184,6 @@ Kotlin stdlib.
 > [!TIP]
 > Evaluate speed on a **Release** build: Debug is always much slower.
 
-> [!NOTE]
-> **Cyrillic in the Windows user path.** (Only affects such machines; CI runs the tests on Linux.) `./gradlew test` fails (`Could not find or load main class worker.org.gradle…`):
-> the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
->
-> ```
-> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.exciteddev.nosleepcam.camera.CameraResolutionTest com.exciteddev.nosleepcam.camera.PhotoMathTest
-> ```
->
-> (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
-
 ## Development
 
 Code quality is checked automatically. The fast checks (formatting and static analysis) also run in a git hook before every
@@ -226,10 +207,62 @@ git config core.hooksPath .githooks
 (R8) builds on every push and pull request, and uploads the reports and the debug APK. Dependabot keeps the Gradle
 dependencies and the actions up to date.
 
-**Architecture in short.** The camera layer (`camera/`) knows nothing about views, strings or preferences: it reports data
-(`CameraCapabilities`, `CameraStatus`, `CameraDescriptor`) to a `CameraListener`, and the UI (`ui/`, `MainActivity`) turns it
-into text and pictures. The camera controller is created by `NoSleepCamApp` and handed to the activity (manual dependency
-injection, no singleton).
+## Architecture
+
+The camera layer (`camera/`) knows nothing about views, strings or preferences: it reports data (`CameraCapabilities`,
+`CameraStatus`, `CameraDescriptor`) to a `CameraListener`, and the UI (`ui/`, `MainActivity`) turns it into text and pictures.
+The camera controller is created by `NoSleepCamApp` and handed to the activity (manual dependency injection, no singleton).
+
+### Three threads
+
+```mermaid
+flowchart LR
+    subgraph main["Main thread"]
+        UI["MainActivity<br/>CameraScreenState → render()"]
+    end
+
+    subgraph cam["Camera thread (HandlerThread)"]
+        CC["CameraController<br/>reconcile()"]
+        parts["TapFocus · StillCapture · RequestFactory<br/>CameraCatalog · FrameRateReporter"]
+        C2[("Camera2")]
+    end
+
+    subgraph save["Photo-saving thread (single executor)"]
+        PS["PhotoSaver<br/>JPEG → MediaStore"]
+    end
+
+    UI -- "setZoom / setFlash / setResolution …<br/>(remember the wish, post to the camera thread)" --> CC
+    CC <--> parts
+    CC <--> C2
+    CC -- "CameraListener events<br/>(re-posted to the main thread)" --> UI
+    parts -- "JPEG bytes" --> PS
+    PS -- "onPhotoSaved / onPhotoFailed<br/>(re-posted to the main thread)" --> UI
+```
+
+Every Camera2 call and callback lives on the camera thread, so the order of events is the order the camera produced them and
+no locks are needed there. The main thread never touches the camera; writing the JPEG to the gallery is slow, so it is moved to
+its own thread and cannot stall the preview.
+
+### Desired state → reconcile → actual state
+
+```mermaid
+flowchart LR
+    want["<b>Desired state</b><br/>wantActive · wantCameraId · wantResolution<br/>wantFlash · wantEv<br/><i>@Volatile, written from any thread</i>"]
+    rec{{"<b>reconcile()</b><br/>camera thread"}}
+    have["<b>Actual state</b><br/>device · session · surface · spec<br/><i>camera thread only</i>"]
+
+    want -- "a setter stores the wish<br/>and posts reconcile()" --> rec
+    rec -- "open · close · createSession<br/>· applyRepeating" --> have
+    have -- "onOpened · onDisconnected · onError<br/>onConfigured · surface available" --> rec
+    rec -. "camera lost → retry with backoff<br/>(1 s, 2 s, 4 s … up to 8 s)" .-> rec
+```
+
+The setters never open or close anything themselves: they store what is wanted and ask `reconcile()` to make reality match.
+`reconcile()` is idempotent and is also called from every camera callback, so it does not matter in which order the user
+rotates the phone, switches the camera, minimizes the app or loses the camera to another app — the next pass converges on the
+desired state. This is what keeps the camera "never asleep".
+
+### Layers
 
 - **Camera layer.** `CameraController` owns the device, the session and the desired state, all on one camera thread. The rest
   runs on the same thread and gets the running camera as an `ActiveCamera`: `TapFocus` (regions, AUTO-mode switch, triggers),
