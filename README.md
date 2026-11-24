@@ -60,6 +60,7 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 - [Build and install](#build-and-install)
 - [Development](#development)
 - [Fast startup](#fast-startup)
+- [Design decisions](#design-decisions)
 - [Tap to focus on the Honor 10](#tap-to-focus-on-the-honor-10)
 - [Project structure](#project-structure)
 - [Known limitations](#known-limitations)
@@ -256,6 +257,61 @@ hardware latency, and it can only be hidden by opening early (which is what is d
 
 **Startup timestamps:** `./gradlew installRelease -PstartupTrace=true`, then `adb logcat -s NSC-Startup` (ms since process
 start), `NSC-Fps` (measured vs. declared frame rate), `NSC-Req` (camera requests). In a normal build they are removed by R8.
+
+## Design decisions
+
+The app deliberately does not use the "modern Android stack" (Compose, ViewModel, Hilt, Coroutines/Flow, CameraX). Every
+choice below follows from one requirement: **the camera must be live as early as possible and must never be interrupted.**
+The numbers are measured on this app (Release build, Honor 10 — see [Fast startup](#fast-startup)); no twin build with
+Jetpack was made, so the comparisons are by architecture, not by stopwatch.
+
+| Decision | Instead of | Why | Evidence |
+|---|---|---|---|
+| Framework views only, no AndroidX/Material | Compose, AppCompat, Material | nothing but opening the camera sits on the cold-start path | 0 runtime dependencies, APK ≈126 KB (`classes.dex` ≈110 KB) |
+| One shared `CameraController` created in `Application` | ViewModel + Hilt | the camera warm-up starts before any Activity exists | camera opened 66–116 ms after process start |
+| One `HandlerThread` and plain callbacks | Coroutines / Flow | Camera2 is callback-based and already delivers everything in order on one thread | no dispatcher hops between a frame and its handler |
+| Camera2 | CameraX | per-request control of what the Honor 10 driver needs | tap focus, ≈119 fps high-speed session, 10x zoom override |
+| One Activity with `configChanges` | recreate on rotation | rotating must not close the camera | a reopen costs ≈0.5–1.1 s to the first frame |
+
+### Why no Jetpack
+
+- **Cold start is class loading.** Everything that is initialised before the first frame delays the camera. A framework
+  `Activity` with a `TextureView` and a few `Canvas`-drawn views (`ZoomSlider`, `FocusIndicatorView`, …) needs none of
+  Compose's runtime, AppCompat's theme inflation or Material's styles. Result: 27 Kotlin files, ≈5.3k lines, a 126 KB APK.
+- **Each library's job is already done another way.** ViewModel survives rotation — here the activity is not recreated and the
+  controller lives in `Application`. Hilt wires an object graph — here the graph is one object. Flow models streams — here
+  the only stream is camera callbacks on a single thread, whose ordering the code relies on (the camera list for the UI is
+  assembled *after* the frame stream starts because both run on the same thread).
+- **This is not "no architecture".** The camera layer reports plain data to a `CameraListener` and knows nothing about views
+  or strings; the pure logic (`SensorGeometry`, `FrameRateMeter`, `CameraSpecRules`, `ControlRules`, `PhotoMath`) is separated
+  and covered by 81 unit tests; ktlint, detekt and Android Lint (warnings are errors) gate every change.
+- **When I would choose Jetpack:** a multi-screen app, a team, or anything where a cold start of a few hundred milliseconds
+  is not the product. Here it is.
+
+### Why Camera2, not CameraX
+
+- **The camera is opened first, on its own thread, before the UI exists** (`Application.onCreate` → `openCamera()` →
+  only then `getCameraCharacteristics`). CameraX binds to a `LifecycleOwner` and runs its own initialisation and availability
+  checks first; that is the wrong order for a warm-up.
+- **The Honor 10 needs request-level control that CameraX hides.** Tap focus works only after switching to
+  `CONTROL_AF_MODE_AUTO` for the duration of the touch (see [below](#tap-to-focus-on-the-honor-10)); the real frame rate is
+  computed from per-frame sensor timestamps; the 119 fps mode is a `createConstrainedHighSpeedCaptureSession`; the Huawei
+  back camera reports 6x zoom while 10x works. Through CameraX all of these would go via `Camera2Interop` — Camera2 anyway,
+  plus a second layer to carry.
+- **The price:** `CameraController` is the biggest file (≈1.3k lines) — the open/session/reconnect state machine that CameraX
+  would otherwise own. It is isolated behind a listener interface, and the rules that do not need a device are extracted
+  and tested.
+
+### Why one Activity with `configChanges`
+
+- **A rotation must not touch the camera.** `MainActivity.onStop` releases the camera, so a recreated activity would close it
+  and open it again, and the first frame after an open takes ≈0.5–1.1 s on this phone: a black preview on every rotation.
+  With `configChanges="screenSize|orientation|uiMode|screenLayout|smallestScreenSize|density"` the activity survives;
+  `onConfigurationChanged` only re-applies the system bars and the preview view refits the frame.
+- **One screen means no navigation.** Settings is a panel in the same window (`SettingsPanel`, built on the first tap on the
+  gear), so there is no back stack, no Fragments and no second Activity to start. `launchMode="singleTop"` keeps one instance.
+- **The one deliberate recreate** is switching the language (`recreate()`): resources must be re-read, and the camera reopening
+  once on an explicit user action is acceptable.
 
 ## Tap to focus on the Honor 10
 
