@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraConstrainedHighSpeedCaptureSession
@@ -14,105 +13,49 @@ import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
-import android.hardware.camera2.params.MeteringRectangle
-import android.media.ImageReader
-import android.net.Uri
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Log
-import android.util.Range
 import android.view.Surface
 import com.exciteddev.nosleepcam.LOG_TAG
 import com.exciteddev.nosleepcam.StartupTrace
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.roundToInt
-
-/** Geometry of the preview buffer — needed to rotate and fit the image correctly. */
-internal data class PreviewGeometry(
-    val bufferWidth: Int,
-    val bufferHeight: Int,
-    val sensorOrientation: Int,
-    val isFront: Boolean,
-    val canFocus: Boolean,
-    /** Range of exposure compensation indices and the step in EV; evMin == evMax — brightness adjustment is unavailable. */
-    val evMin: Int = 0,
-    val evMax: Int = 0,
-    val evStep: Float = 0f,
-    /** The session has a JPEG stream for photos (absent in high-speed mode and when the device rejected such a stream). */
-    val canCapture: Boolean = false,
-) {
-    val isValid: Boolean get() = bufferWidth > 0 && bufferHeight > 0
-
-    val canAdjustExposure: Boolean get() = evMax > evMin
-
-    /** A touch on the frame makes sense: either focus, or at least exposure metering and brightness. */
-    val canTap: Boolean get() = canFocus || canAdjustExposure
-}
-
-/** [Metered] — a camera without autofocus: only the exposure was metered at this point. */
-internal enum class FocusStatus { Searching, Focused, Failed, Metered }
 
 /**
- * Subscriber to camera events. All methods are called on the camera's background thread —
- * the consumer switches to the UI thread itself.
- */
-internal interface CameraListener {
-    fun onCapabilities(capabilities: CameraCapabilities) {}
-
-    fun onResolutionApplied(resolution: CameraResolution) {}
-
-    fun onGeometry(geometry: PreviewGeometry) {}
-
-    /** A problem to show to the user; null — all is well, the message is hidden. */
-    fun onStatus(status: CameraStatus?) {}
-
-    fun onFocus(status: FocusStatus) {}
-
-    /** Actual frame rate (fps, integer); 0 — the camera is not running or is being reconfigured. */
-    fun onFrameRate(fps: Int) {}
-
-    /** The photo has been written to the gallery. Not called on the camera thread. */
-    fun onPhotoSaved(uri: Uri) {}
-
-    /** The photo could not be taken or saved. */
-    fun onPhotoFailed() {}
-}
-
-/**
- * Controls the camera through Camera2: opening, the preview session, zoom, autofocus
- * (continuous + tap) and automatic reconnection.
+ * Controls the camera through Camera2: opening, the preview session, zoom and automatic reconnection.
  *
  * All camera state changes happen on one background thread ([handler]).
  * External methods only remember the "desired state" and call [reconcile],
  * which brings the actual camera state to the desired one — so the order of calls does not matter.
  *
- * The pure parts live elsewhere ([CameraSpecReader], [CameraSpecRules], [SensorGeometry], [FrameRateMeter]). What remains
- * is one state machine: the device, session, focus and still-photo callbacks all read and write the same mutable state on
- * one thread, so it is deliberately kept in a single class instead of being scattered over objects that share that state.
+ * The controller owns the device and the session. The rest is split by responsibility, and every part runs on the same
+ * thread and gets the running camera as an [ActiveCamera]:
+ * - [TapFocus] — tap to focus (decisions in [FocusRules]);
+ * - [StillCapture] — photos;
+ * - [RequestFactory] — building requests;
+ * - [CameraCatalog] — which cameras exist and which one to open;
+ * - [FrameRateReporter] — the measured frame rate.
  */
-@Suppress("LargeClass", "TooManyFunctions")
 internal class CameraController(
     context: Context,
 ) {
     private val context: Context = context.applicationContext ?: context
-    private val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-    private val specReader = CameraSpecReader(manager)
     private val thread = HandlerThread("NoSleepCam.Camera").also { it.start() }
     private val handler = Handler(thread.looper)
     private val retryRunnable = Runnable { reconcile() }
+    private val events = CameraEvents()
+    private val host = Host()
     private val captureCallback = CaptureCb()
-    private val listeners = CopyOnWriteArrayList<CameraListener>()
+    private val manager = this.context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+    private val catalog = CameraCatalog(manager)
+    private val focus = TapFocus(handler, events, host)
+    private val stills = StillCapture(this.context, handler, events, host, focus)
+    private val frameRate = FrameRateReporter(events)
+    private val zoom = ZoomControl()
+    private val highSpeed = HighSpeedPolicy()
 
-    // Caches and blacklists — camera thread only.
-    private val specs = HashMap<String, CameraSpec>()
+    // Sizes the device rejected — camera thread only. The specs stay exactly as the system reported them.
     private val blocked = HashSet<Pair<String, CameraResolution>>()
-    private val blockedHighSpeed = HashSet<Pair<String, CameraResolution>>()
-
-    // Limits discovered while running; the specs themselves stay exactly as the system reported them.
-    private val zoomLimits = HashMap<String, Float>() // camera id → the zoom it really delivers (lower than offered)
-    private val highSpeedBroken = HashSet<String>() // cameras whose every high-speed size was rejected
 
     // ---- Desired state (written from any thread) ----
     @Volatile private var wantActive = false
@@ -121,11 +64,7 @@ internal class CameraController(
 
     @Volatile private var wantResolution: CameraResolution? = null
 
-    @Volatile private var wantZoom = 1f
-
     @Volatile private var wantFlash = false
-
-    @Volatile private var wantHighSpeed = false
 
     @Volatile private var wantEv = 0 // exposure compensation index (brightness); reset by a new touch
     private val zoomPosted = AtomicBoolean(false)
@@ -143,33 +82,7 @@ internal class CameraController(
     private var retryDelayMs = 1000L
     private var activeHighSpeed = false // the current session is high-speed
     private var publishedHighSpeed = false // the mode with which the capabilities were last passed to the UI
-
-    // ---- Tap to focus (camera thread only) ----
-    private enum class FocusPhase { None, Triggering, Searching }
-
-    private var focusPhase = FocusPhase.None
-
-    /**
-     * While true, all requests go in AF_MODE_AUTO. In CONTINUOUS_PICTURE the Honor 10 driver on a START trigger only
-     * "locks" the current lens position after ~4 frames without scanning anything (LENS_FOCUS_DISTANCE does not change), so tap
-     * focus does not work. In AUTO the same trigger starts a real ACTIVE_SCAN over the chosen region.
-     */
-    private var focusAutoMode = false
-    private var focusStartFrame = 0L
-    private var focusToken = 0
-    private var afRegion: SensorRect? = null
-    private var aeRegion: SensorRect? = null
-
     private var lastCapabilities: CameraCapabilities? = null
-
-    // ---- Photos: a JPEG stream in the same session as the preview (camera thread only, except savePool) ----
-    private var reader: ImageReader? = null // stream of the active session
-    private var pendingReader: ImageReader? = null // stream of the session being configured
-    private val blockedStill = HashSet<Pair<String, CameraResolution>>()
-    private val savePool = Executors.newSingleThreadExecutor()
-    private val stillCallback = StillCb()
-    private var pendingCaptureRotation = -1 // a photo is waiting for focus to finish (−1 — not waiting)
-    private val pendingCaptureRunnable = Runnable { flushPendingCapture() }
     private var capabilitiesPending = false // the camera is open, but the capabilities have not yet been passed to the UI
     private val publishPendingRunnable = Runnable { publishPendingCapabilities() }
 
@@ -185,7 +98,7 @@ internal class CameraController(
      */
     fun addListener(listener: CameraListener) =
         post {
-            listeners.add(listener)
+            events.add(listener)
             uiAttached = true
 
             lastCapabilities?.let { listener.onCapabilities(it) }
@@ -196,11 +109,11 @@ internal class CameraController(
                 if (!activeHighSpeed) listener.onResolutionApplied(resolution)
             }
 
-            if (reportedFps > 0) listener.onFrameRate(reportedFps)
+            if (frameRate.reported > 0) listener.onFrameRate(frameRate.reported)
         }
 
     fun removeListener(listener: CameraListener) {
-        listeners.remove(listener)
+        events.remove(listener)
     }
 
     fun setActive(active: Boolean) {
@@ -221,9 +134,9 @@ internal class CameraController(
         post(::reconcile)
     }
 
-    fun setZoom(zoom: Double) {
-        wantZoom = zoom.toFloat()
-        StartupTrace.req { "setZoom(${"%.2f".format(zoom)}) posted=${zoomPosted.get()}" }
+    fun setZoom(value: Double) {
+        zoom.requested = value.toFloat()
+        StartupTrace.req { "setZoom(${"%.2f".format(value)}) posted=${zoomPosted.get()}" }
 
         // The slider generates dozens of events per second — we merge them into a single request update.
         if (zoomPosted.compareAndSet(false, true)) {
@@ -253,8 +166,8 @@ internal class CameraController(
      * The session is rebuilt and the zoom is limited to the declared maximum.
      */
     fun setHighSpeed(on: Boolean) {
-        if (wantHighSpeed == on) return
-        wantHighSpeed = on
+        if (highSpeed.wanted == on) return
+        highSpeed.wanted = on
         post(::reconcile)
     }
 
@@ -318,14 +231,14 @@ internal class CameraController(
     fun focusAt(
         s: Float,
         t: Float,
-    ) = post { startFocus(s, t) }
+    ) = post { focus.tap(s, t) }
 
-    fun resetFocus() =
-        post {
-            afRegion = null
-            aeRegion = null
-            endFocusLock()
-        }
+    /**
+     * Takes a photo: a full-size JPEG with the same zoom, brightness, flash and focus as in the preview.
+     * [displayRotation] is the current screen rotation (0/90/180/270), which determines how the photo is rotated.
+     * The result is [CameraListener.onPhotoSaved] or [CameraListener.onPhotoFailed].
+     */
+    fun capturePhoto(displayRotation: Int) = post { stills.capture(displayRotation) }
 
     private fun post(action: () -> Unit) {
         handler.post(action)
@@ -367,7 +280,7 @@ internal class CameraController(
             return null
         }
 
-        val targetId = resolveTargetId(wantCameraId)
+        val targetId = catalog.resolveTargetId(wantCameraId)
         if (targetId == null) raiseStatus(CameraStatus.NoCameras)
         return targetId
     }
@@ -376,9 +289,9 @@ internal class CameraController(
     private fun ensureSession() {
         // High-speed mode: the frame size is dictated by the camera; the resolution chosen by the user is not touched.
         val currentSpec = spec
-        val highSpeed = if (currentSpec != null && highSpeedWanted(currentSpec)) resolveHighSpeed(currentSpec) else null
+        val fastConfig = if (currentSpec != null && highSpeed.isActive(currentSpec)) highSpeed.config(currentSpec) else null
 
-        val resolution = highSpeed?.size ?: resolveResolution()
+        val resolution = fastConfig?.size ?: resolveResolution()
         if (resolution == null) {
             // All sizes were rejected by the device — clear the blacklist and try again later.
             blocked.clear()
@@ -387,44 +300,12 @@ internal class CameraController(
             return
         }
 
-        if (session == null || activeResolution != resolution || activeHighSpeed != (highSpeed != null)) {
-            createSession(resolution, highSpeed)
+        if (session == null || activeResolution != resolution || activeHighSpeed != (fastConfig != null)) {
+            createSession(resolution, fastConfig)
             return
         }
 
         applyRepeating()
-    }
-
-    private fun supportsHighSpeed(spec: CameraSpec) = spec.hasHighSpeed && spec.id !in highSpeedBroken
-
-    private fun highSpeedWanted(spec: CameraSpec) = wantHighSpeed && supportsHighSpeed(spec)
-
-    /** The first high-speed size the device has not yet rejected (the largest — it is also the best). */
-    private fun resolveHighSpeed(spec: CameraSpec): HighSpeedConfig? =
-        spec.highSpeedConfigs.firstOrNull { (spec.id to it.size) !in blockedHighSpeed }
-
-    /**
-     * Which camera to open. If the camera is already known (saved from the last launch) — we take it right away,
-     * without iterating over the characteristics of all the device's cameras (each is a separate system call).
-     */
-    private fun resolveTargetId(wantCameraId: String?): String? {
-        if (wantCameraId != null) {
-            try {
-                val cached = specs[wantCameraId]
-                if (cached != null) {
-                    if (cached.resolutions.isNotEmpty()) return wantCameraId
-                } else if (wantCameraId in manager.cameraIdList) {
-                    // The characteristics have not been read yet: we don't spend time on them before opening — openCamera() reads them
-                    // in parallel with the system opening the camera.
-                    return wantCameraId
-                }
-            } catch (ex: Exception) {
-                Log.w(LOG_TAG, "Camera $wantCameraId unavailable: ${ex.message}")
-            }
-        }
-
-        val cameras = listCameras()
-        return (cameras.firstOrNull { isBack(it.id) } ?: cameras.firstOrNull())?.id
     }
 
     private fun scheduleRetry() {
@@ -453,7 +334,7 @@ internal class CameraController(
             // is busy opening, this thread does not idle. The onOpened callback will not fire until we return.
             manager.openCamera(id, DeviceCb(gen), handler)
             StartupTrace.mark { "openCamera() called" }
-            val loaded = loadSpec(id)
+            val loaded = catalog.spec(id)
             spec = loaded
             if (loaded.resolutions.isEmpty()) {
                 // A camera without usable sizes (e.g. an external one that disappeared): forget it and pick another.
@@ -508,27 +389,30 @@ internal class CameraController(
     }
 
     @Suppress("DEPRECATION") // SessionConfiguration — only from API 28, and minSdk = 24
-    private fun createSession(resolution: CameraResolution, highSpeed: HighSpeedConfig?) {
+    private fun createSession(
+        resolution: CameraResolution,
+        fastConfig: HighSpeedConfig?,
+    ) {
         val device = device ?: return
         val texture = texture ?: return
         try {
             sessionPending = true
             session = null // the old session closes automatically when a new one is created
-            resetFrameRate()
+            frameRate.reset()
 
             texture.setDefaultBufferSize(resolution.width, resolution.height)
             val newSurface = Surface(texture)
             surface = newSurface
 
             val gen = generation
-            if (highSpeed != null) {
+            if (fastConfig != null) {
                 // A special session for rates above 30 fps: only the preview surface of the declared size.
                 device.createConstrainedHighSpeedCaptureSession(listOf(newSurface), SessionCb(gen, resolution, true, false), handler)
                 return
             }
 
             // Besides the preview, the session has a JPEG stream for photos (the camera delivers a full-size photo from it).
-            val still = openStillReader(resolution)
+            val still = spec?.let { stills.openStream(it, resolution) }
             device.createCaptureSession(
                 listOfNotNull(newSurface, still?.surface),
                 SessionCb(gen, resolution, false, still != null),
@@ -544,7 +428,7 @@ internal class CameraController(
         gen: Int,
         session: CameraCaptureSession,
         resolution: CameraResolution,
-        highSpeed: Boolean,
+        isHighSpeed: Boolean,
     ) {
         if (gen != generation) {
             try {
@@ -552,41 +436,38 @@ internal class CameraController(
             } catch (_: Exception) {
                 // ignore
             }
-            pendingReader?.close()
-            pendingReader = null
+            stills.discardPendingStream()
             return
         }
 
-        StartupTrace.mark { "Session configured (${resolution.key}${if (highSpeed) ", high-speed" else ""})" }
+        StartupTrace.mark { "Session configured (${resolution.key}${if (isHighSpeed) ", high-speed" else ""})" }
         // The previous session's stream is no longer needed; the new one (if any) becomes active — before raiseGeometry().
-        reader?.close()
-        reader = pendingReader
-        pendingReader = null
+        stills.activateStream()
         this.session = session
         sessionPending = false
         activeResolution = resolution
-        activeHighSpeed = highSpeed
-        focusPhase = FocusPhase.None
+        activeHighSpeed = isHighSpeed
+        focus.onSessionReplaced()
 
         val spec = spec ?: return
         raiseGeometry()
 
         // In high-speed mode the frame size is not chosen by the user: the UI must not
         // "remember" it as selected (otherwise it would overwrite the real choice after returning to the normal mode).
-        if (!highSpeed) emit { it.onResolutionApplied(resolution) }
+        if (!isHighSpeed) events.emit { it.onResolutionApplied(resolution) }
 
         raiseStatus(null)
 
         applyRepeating()
 
         // In AUTO mode the camera does not focus on its own — we start autofocus manually once.
-        if (spec.afMode == CameraMetadata.CONTROL_AF_MODE_AUTO && !highSpeed) {
-            triggerAf(CameraMetadata.CONTROL_AF_TRIGGER_START)
+        if (spec.afMode == CameraMetadata.CONTROL_AF_MODE_AUTO && !isHighSpeed) {
+            focus.triggerAf(CameraMetadata.CONTROL_AF_TRIGGER_START)
         }
 
         // The mode changed — the zoom maximum and mode support may differ; and after the camera is opened
         // we publish the deferred capabilities right here (the request has already been sent, so this does not delay the first frame).
-        if (highSpeed != publishedHighSpeed) publishCapabilities() else publishPendingCapabilities()
+        if (isHighSpeed != publishedHighSpeed) publishCapabilities() else publishPendingCapabilities()
 
         reconcile()
     }
@@ -597,9 +478,9 @@ internal class CameraController(
         val spec = spec ?: return
 
         publishedHighSpeed = activeHighSpeed
-        val capabilities = buildCapabilities(spec.id)
+        val capabilities = buildCapabilities(spec)
         lastCapabilities = capabilities
-        emit { it.onCapabilities(capabilities) }
+        events.emit { it.onCapabilities(capabilities) }
         StartupTrace.mark { "Camera capabilities passed to the UI" }
     }
 
@@ -624,23 +505,22 @@ internal class CameraController(
             evMin = if (activeHighSpeed) 0 else spec.evMin,
             evMax = if (activeHighSpeed) 0 else spec.evMax,
             evStep = spec.evStep,
-            canCapture = !activeHighSpeed && reader != null,
+            canCapture = !activeHighSpeed && stills.hasStream,
         )
     }
 
     private fun raiseGeometry() {
         val geometry = currentGeometry() ?: return
-        emit { it.onGeometry(geometry) }
+        events.emit { it.onGeometry(geometry) }
     }
 
     private fun onSessionConfigureFailed(
         gen: Int,
         resolution: CameraResolution,
-        highSpeed: Boolean,
+        wasHighSpeed: Boolean,
         withStill: Boolean,
     ) {
-        pendingReader?.close()
-        pendingReader = null
+        stills.discardPendingStream()
         if (gen != generation) return
 
         sessionPending = false
@@ -650,21 +530,17 @@ internal class CameraController(
         if (withStill) {
             // Perhaps it was precisely the combination of the preview with the JPEG stream that was rejected. We don't discard the resolution because of that:
             // we try the same one without photos (then photos are unavailable for it).
-            blockedStill.add(failedSpec.id to resolution)
+            stills.block(failedSpec, resolution)
             Log.w(LOG_TAG, "Configure with JPEG failed for ${resolution.key}, retrying without")
             reconcile()
             return
         }
 
-        if (highSpeed) {
+        if (wasHighSpeed) {
             // We don't touch the regular size list: it was the high-speed mode of this size that was rejected.
-            blockedHighSpeed.add(failedSpec.id to resolution)
             Log.w(LOG_TAG, "High-speed configure failed for ${resolution.key}")
 
-            if (resolveHighSpeed(failedSpec) == null) {
-                highSpeedBroken.add(failedSpec.id)
-                raiseStatus(CameraStatus.HighSpeedUnsupported)
-            }
+            if (highSpeed.reject(failedSpec, resolution)) raiseStatus(CameraStatus.HighSpeedUnsupported)
 
             activeHighSpeed = false
             publishCapabilities()
@@ -687,13 +563,9 @@ internal class CameraController(
         generation++
         opening = false
         sessionPending = false
-        focusToken++
-        focusPhase = FocusPhase.None
-        focusAutoMode = false
-        pendingCaptureRotation = -1
-        handler.removeCallbacks(pendingCaptureRunnable)
+        focus.cancel()
         handler.removeCallbacks(retryRunnable)
-        resetFrameRate()
+        frameRate.reset()
 
         try {
             session?.close()
@@ -716,27 +588,15 @@ internal class CameraController(
         }
         surface = null
 
-        reader?.close()
-        reader = null
-        pendingReader?.close()
-        pendingReader = null
+        stills.release()
 
         activeResolution = null
         activeHighSpeed = false
     }
 
     // =====================================================================
-    // Camera requests: zoom, autofocus mode, regions
+    // Camera requests and zoom
     // =====================================================================
-
-    /** Everything a request needs; exists only while the camera is fully set up (see [activeCamera]). */
-    private class ActiveCamera(
-        val device: CameraDevice,
-        val session: CameraCaptureSession,
-        val surface: Surface,
-        val spec: CameraSpec,
-        val resolution: CameraResolution,
-    )
 
     private fun activeCamera(): ActiveCamera? {
         val device = device ?: return null
@@ -744,82 +604,42 @@ internal class CameraController(
         val surface = surface ?: return null
         val spec = spec ?: return null
         val resolution = activeResolution ?: return null
-        return ActiveCamera(device, session, surface, spec, resolution)
+        return ActiveCamera(device, session, surface, spec, resolution, activeHighSpeed)
     }
 
-    /**
-     * Settings shared by the preview and the still-photo requests: exposure, focus mode, flash, zoom and tap regions.
-     * After tap focus the lens is locked in AUTO mode — the photo keeps it too, and torch stays on for the photo as well.
-     */
-    private fun applyCommonSettings(
-        builder: CaptureRequest.Builder,
-        spec: CameraSpec,
-    ) {
-        builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-        builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-        if (spec.evMax > spec.evMin) {
-            builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, wantEv.coerceIn(spec.evMin, spec.evMax))
-        }
-        builder.set(CaptureRequest.CONTROL_AF_MODE, if (focusAutoMode) CameraMetadata.CONTROL_AF_MODE_AUTO else spec.afMode)
-
-        // Torch keeps the flash on in every frame (including during focusing).
-        builder.set(
-            CaptureRequest.FLASH_MODE,
-            if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
+    private fun requestParams(spec: CameraSpec) =
+        RequestParams(
+            evIndex = wantEv,
+            torch = wantFlash,
+            crop = cropForZoom(spec),
+            afAutoMode = focus.autoMode,
+            afRegion = focus.afRegion,
+            aeRegion = focus.aeRegion,
         )
-
-        val crop = cropForZoom(spec)
-        builder.set(CaptureRequest.SCALER_CROP_REGION, crop.toRect())
-        applyTapRegions(builder, spec, crop)
-    }
-
-    private fun buildRequest(
-        camera: ActiveCamera,
-        afTrigger: Int,
-    ): CaptureRequest.Builder {
-        val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-        builder.addTarget(camera.surface)
-        applyCommonSettings(builder, camera.spec)
-        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, afTrigger)
-
-        // Without an explicit range the Honor 10 driver by default keeps the preview at ~25 fps (range [14,25]), although for
-        // most sizes it declares 30; with an explicit [14,30] it gives 30 in good light. The upper bound is the one declared for this size.
-        aeFpsRangeFor(camera.spec, camera.resolution)?.let { (lower, upper) ->
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(lower, upper))
-        }
-
-        return builder
-    }
 
     private fun applyRepeating() {
         val camera = activeCamera()
         StartupTrace.req {
             "applyRepeating: session=${session != null} device=${device != null} surface=${surface != null} " +
-                "spec=${spec != null} active=${activeResolution?.key} hs=$activeHighSpeed wantZoom=${"%.2f".format(wantZoom)}"
+                "spec=${spec != null} active=${activeResolution?.key} hs=$activeHighSpeed wantZoom=${"%.2f".format(zoom.requested)}"
         }
         if (camera == null) return
 
-        if (activeHighSpeed) {
+        if (camera.highSpeed) {
             applyHighSpeedRepeating(camera)
             return
         }
 
         try {
-            val request = buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build()
+            val request = host.previewRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE)
             camera.session.setRepeatingRequest(request, captureCallback, handler)
         } catch (ex: Exception) {
             Log.w(LOG_TAG, "setRepeatingRequest: ${ex.message}")
         }
     }
 
-    /**
-     * A request in a high-speed session. Deliberately minimal: only auto modes, the frame rate range from the camera's list, and zoom.
-     * We don't add flash, focus regions and triggers here — such a session does not accept everything, and the Honor driver
-     * has already hung on invalid parameters.
-     */
     private fun applyHighSpeedRepeating(camera: ActiveCamera) {
-        val spec = camera.spec
-        val config = spec.highSpeedConfigs.firstOrNull { it.size == camera.resolution }
+        val config = camera.spec.highSpeedConfigs.firstOrNull { it.size == camera.resolution }
         if (config == null) {
             StartupTrace.req { "HS burst: no config for ${camera.resolution.key}" }
             return
@@ -827,17 +647,9 @@ internal class CameraController(
 
         try {
             val highSpeedSession = camera.session as CameraConstrainedHighSpeedCaptureSession
-            val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            builder.addTarget(camera.surface)
-
-            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-            builder.set(CaptureRequest.CONTROL_AF_MODE, spec.highSpeedAfMode)
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(config.lower, config.upper))
-            builder.set(CaptureRequest.SCALER_CROP_REGION, cropForZoom(spec).toRect())
-
-            val requests = highSpeedSession.createHighSpeedRequestList(builder.build())
-            StartupTrace.req { "HS burst: crop=${cropForZoom(spec)} requests=${requests.size}" }
+            val crop = cropForZoom(camera.spec)
+            val requests = highSpeedSession.createHighSpeedRequestList(RequestFactory.highSpeed(camera, config, crop))
+            StartupTrace.req { "HS burst: crop=$crop requests=${requests.size}" }
             highSpeedSession.setRepeatingBurst(requests, captureCallback, handler)
             StartupTrace.req { "HS burst: setRepeatingBurst returned" }
         } catch (ex: Exception) {
@@ -846,404 +658,56 @@ internal class CameraController(
         }
     }
 
-    /** Maximum zoom offered at the moment: in high-speed mode — only the one declared by the camera. */
-    private fun effectiveMaxZoom(spec: CameraSpec) = if (highSpeedWanted(spec)) spec.declaredMaxZoom else offeredMaxZoom(spec)
-
-    /** The zoom offered for this camera outside high-speed mode: what the spec says, unless the camera was seen not to deliver it. */
-    private fun offeredMaxZoom(spec: CameraSpec) = zoomLimits[spec.id] ?: spec.offeredMaxZoom
-
-    private fun currentZoom(spec: CameraSpec) = wantZoom.coerceIn(1f, maxOf(1f, effectiveMaxZoom(spec)))
-
     /** The sensor area that must be shown at the current zoom (centred). */
-    private fun cropForZoom(spec: CameraSpec) = SensorGeometry.cropForZoom(spec.activeArray, currentZoom(spec))
-
-    /**
-     * Tap focus/metering regions go into a request only when they are inside the visible area:
-     * a region outside it is ignored by the camera.
-     */
-    private fun applyTapRegions(
-        builder: CaptureRequest.Builder,
-        spec: CameraSpec,
-        crop: SensorRect,
-    ) {
-        afRegion
-            ?.takeIf { spec.maxAfRegions > 0 && crop.containsCenterOf(it) }
-            ?.let { builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(it.toMetering())) }
-        aeRegion
-            ?.takeIf { spec.maxAeRegions > 0 && crop.containsCenterOf(it) }
-            ?.let { builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(it.toMetering())) }
-    }
-
-    private fun SensorRect.toMetering() = MeteringRectangle(left, top, width, height, MeteringRectangle.METERING_WEIGHT_MAX)
-
-    // =====================================================================
-    // Photo
-    // =====================================================================
-
-    /** Creates a JPEG receiver for the preview resolution; null — photos are unavailable for it. */
-    private fun openStillReader(resolution: CameraResolution): ImageReader? {
-        val spec = spec ?: return null
-        if ((spec.id to resolution) in blockedStill) return null
-
-        val size = PhotoMath.pickJpegSize(spec.jpegSizes, resolution) ?: return null
-        val newReader = ImageReader.newInstance(size.width, size.height, ImageFormat.JPEG, 2)
-        newReader.setOnImageAvailableListener(::onStillAvailable, handler)
-        pendingReader?.close()
-        pendingReader = newReader
-        StartupTrace.req { "JPEG ${size.key} for preview ${resolution.key}" }
-        return newReader
-    }
-
-    /**
-     * Takes a photo: a full-size JPEG with the same zoom, brightness, flash and focus as in the preview.
-     * [displayRotation] is the current screen rotation (0/90/180/270), which determines how the photo is rotated.
-     * The result is [CameraListener.onPhotoSaved] or [CameraListener.onPhotoFailed].
-     */
-    fun capturePhoto(displayRotation: Int) =
-        post {
-            if (focusPhase != FocusPhase.None) {
-                // Tap focus (the first tap of a double tap) is still in progress: we wait for the result so that the photo does not come out unfocused.
-                pendingCaptureRotation = displayRotation
-                handler.removeCallbacks(pendingCaptureRunnable)
-                handler.postDelayed(pendingCaptureRunnable, CAPTURE_WAIT_FOR_FOCUS_MS)
-            } else {
-                doCapturePhoto(displayRotation)
-            }
-        }
-
-    /** Focus finished (or the wait timed out) — we take the photo that was waiting for it. */
-    private fun flushPendingCapture() {
-        handler.removeCallbacks(pendingCaptureRunnable)
-        val rotation = pendingCaptureRotation
-        if (rotation < 0) return
-
-        pendingCaptureRotation = -1
-        doCapturePhoto(rotation)
-    }
-
-    private fun doCapturePhoto(displayRotation: Int) {
-        val camera = activeCamera()
-        val reader = reader
-        StartupTrace.req {
-            "capturePhoto: session=${session != null} reader=${reader != null} hs=$activeHighSpeed rotation=$displayRotation"
-        }
-        if (camera == null || reader == null || activeHighSpeed) {
-            emit { it.onPhotoFailed() }
-            return
-        }
-
-        try {
-            val spec = camera.spec
-            val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
-            builder.addTarget(reader.surface)
-            applyCommonSettings(builder, spec)
-            builder.set(CaptureRequest.JPEG_ORIENTATION, PhotoMath.jpegOrientation(spec.sensorOrientation, displayRotation, spec.isFront))
-            builder.set(CaptureRequest.JPEG_QUALITY, JPEG_QUALITY)
-
-            camera.session.capture(builder.build(), stillCallback, handler)
-        } catch (ex: Exception) {
-            Log.w(LOG_TAG, "capturePhoto: ${ex.message}")
-            emit { it.onPhotoFailed() }
-        }
-    }
-
-    /** The JPEG is ready: we take the bytes and hand the gallery write over to a separate thread so as not to block the camera. */
-    private fun onStillAvailable(source: ImageReader) {
-        val image =
-            try {
-                source.acquireNextImage()
-            } catch (ex: Exception) {
-                Log.w(LOG_TAG, "acquireNextImage: ${ex.message}")
-                null
-            } ?: return
-
-        val bytes =
-            try {
-                val buffer = image.planes[0].buffer
-                ByteArray(buffer.remaining()).also { buffer.get(it) }
-            } finally {
-                image.close()
-            }
-
-        val takenAt = System.currentTimeMillis()
-        StartupTrace.req { "JPEG received: ${bytes.size} bytes" }
-        savePool.execute {
-            val uri = PhotoSaver.save(context, bytes, takenAt)
-            if (uri != null) emit { it.onPhotoSaved(uri) } else emit { it.onPhotoFailed() }
-        }
-    }
-
-    // =====================================================================
-    // Tap focus
-    // =====================================================================
-
-    private fun startFocus(
-        s: Float,
-        t: Float,
-    ) {
-        // A high-speed session cannot focus; a camera with neither autofocus nor exposure regions has nothing to do for a tap.
-        val camera = activeCamera()?.takeUnless { activeHighSpeed || it.cannotRespondToTap() }
-        if (camera == null) {
-            emit { it.onFocus(FocusStatus.Failed) } // remove the indicator that is already shown
-            return
-        }
-
-        val spec = camera.spec
-        val noAf = spec.afMode == CameraMetadata.CONTROL_AF_MODE_OFF
-        val resolution = camera.resolution
-        val visible = SensorGeometry.visibleRect(cropForZoom(spec), resolution.width, resolution.height)
-        val region = SensorGeometry.focusRegion(s, t, spec.sensorOrientation, visible, spec.activeArray)
-        afRegion = if (spec.maxAfRegions > 0 && !noAf) region else null
-        aeRegion = if (spec.maxAeRegions > 0) region else null
-
-        if (noAf) {
-            // A camera without autofocus (usually the front one): at this point we only meter the exposure.
-            applyRepeating()
-            emit { it.onFocus(FocusStatus.Metered) }
-            return
-        }
-
-        val token = ++focusToken
-        focusPhase = FocusPhase.Triggering
-        focusAutoMode = spec.hasAfAuto
-        emit { it.onFocus(FocusStatus.Searching) }
-        StartupTrace.req {
-            "TAP s=${"%.2f".format(s)} t=${"%.2f".format(t)} -> sensor region=$region " +
-                "visible=$visible afMode=${spec.afMode} afRegionSet=${afRegion != null}"
-        }
-
-        try {
-            // Reset the previous trigger, then start a new one and update the regions in the repeating request.
-            val session = camera.session
-            session.capture(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL).build(), captureCallback, handler)
-            session.capture(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_START).build(), captureCallback, handler)
-            session.setRepeatingRequest(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
-        } catch (ex: Exception) {
-            Log.w(LOG_TAG, "startFocus: ${ex.message}")
-            focusPhase = FocusPhase.None
-            return
-        }
-
-        handler.postDelayed({
-            if (token == focusToken && focusPhase != FocusPhase.None) {
-                emit { it.onFocus(FocusStatus.Failed) }
-                endFocusLock()
-            }
-        }, FOCUS_TIMEOUT_MS)
-    }
-
-    private fun ActiveCamera.cannotRespondToTap() = spec.afMode == CameraMetadata.CONTROL_AF_MODE_OFF && spec.maxAeRegions == 0
-
-    private fun onFocusResult(success: Boolean) {
-        val token = focusToken
-        focusPhase = FocusPhase.None
-        emit { it.onFocus(if (success) FocusStatus.Focused else FocusStatus.Failed) }
-        flushPendingCapture() // the lens is locked (AUTO mode) — we take the photo that was waiting for focus right now
-
-        // Briefly hold the lock, then return to continuous autofocus (the region stays).
-        handler.postDelayed({
-            if (token == focusToken) endFocusLock()
-        }, FOCUS_HOLD_MS)
-    }
-
-    private fun endFocusLock() {
-        focusToken++
-        focusPhase = FocusPhase.None
-        flushPendingCapture()
-        focusAutoMode = false
-        triggerAf(CameraMetadata.CONTROL_AF_TRIGGER_CANCEL)
-        applyRepeating()
-    }
-
-    private fun triggerAf(trigger: Int) {
-        val camera = activeCamera() ?: return
-        if (activeHighSpeed) return // a high-speed session does not accept single requests and triggers
-
-        try {
-            camera.session.capture(buildRequest(camera, trigger).build(), captureCallback, handler)
-        } catch (ex: Exception) {
-            Log.w(LOG_TAG, "triggerAf($trigger): ${ex.message}")
-        }
-    }
+    private fun cropForZoom(spec: CameraSpec) = zoom.crop(spec, highSpeed.isActive(spec))
 
     private fun onCaptureCompleted(
         request: CaptureRequest,
         result: TotalCaptureResult,
     ) {
-        measureFrameRate(result)
+        frameRate.onFrame(result, spec, activeResolution)
         if (!activeHighSpeed) {
             checkZoomHonored(request, result) // in high-speed mode the crop region may not apply — that is not zoom "clamping"
         }
 
-        traceAf(request, result)
-        if (focusPhase == FocusPhase.None) return
-
-        if (focusPhase == FocusPhase.Triggering) {
-            // We wait for the frame in which the START trigger was actually sent.
-            val trigger = request.get(CaptureRequest.CONTROL_AF_TRIGGER) ?: -1
-            if (trigger != CameraMetadata.CONTROL_AF_TRIGGER_START) return
-
-            focusStartFrame = result.frameNumber
-            focusPhase = FocusPhase.Searching
-        }
-
-        if (result.frameNumber < focusStartFrame) return
-
-        when (result.get(CaptureResult.CONTROL_AF_STATE)) {
-            CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED -> onFocusResult(true)
-            CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED -> onFocusResult(false)
-        }
+        focus.onFrame(request, result)
     }
 
-    private var traceAfLastState = -1
-
-    /** AF diagnostics (tag NSC-Req): state, mode, request trigger, regions in the response, lens distance. */
-    private fun traceAf(
-        request: CaptureRequest,
-        result: TotalCaptureResult,
-    ) = StartupTrace.req {
-        val state = result.get(CaptureResult.CONTROL_AF_STATE) ?: -1
-        val changed = state != traceAfLastState
-        traceAfLastState = state
-        if (!changed && focusPhase == FocusPhase.None) return@req ""
-        val regions = result.get(CaptureResult.CONTROL_AF_REGIONS)?.firstOrNull()?.rect
-        "AF frame=${result.frameNumber} state=$state mode=${result.get(CaptureResult.CONTROL_AF_MODE)} " +
-            "reqTrigger=${request.get(CaptureRequest.CONTROL_AF_TRIGGER)} phase=$focusPhase " +
-            "focusDist=${result.get(CaptureResult.LENS_FOCUS_DISTANCE)} regionInResult=$regions"
-    }
-
-    // ---------------------------------------------------------------------
-    // Actual frame rate (shown next to the flash icon)
-    // ---------------------------------------------------------------------
-
-    private val frameRateMeter = FrameRateMeter()
-    private var reportedFps = 0
-
-    /**
-     * Counts frames by sensor timestamps (more accurate than by callback arrival time) in a ≈1 s window
-     * and notifies the UI when the integer value changes.
-     */
-    private fun measureFrameRate(result: TotalCaptureResult) {
-        val timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
-        val fps = frameRateMeter.onFrame(timestamp) ?: return
-        traceFps(fps, result)
-        publishFrameRate(fps.roundToInt())
-    }
-
-    private fun publishFrameRate(fps: Int) {
-        if (fps == reportedFps) return
-
-        reportedFps = fps
-        emit { it.onFrameRate(fps) }
-    }
-
-    /** The camera was closed or reconfigured — the old value is no longer reliable. */
-    private fun resetFrameRate() {
-        frameRateMeter.reset()
-        publishFrameRate(0)
-    }
-
-    private fun traceFps(
-        fps: Double,
-        result: TotalCaptureResult,
-    ) = StartupTrace.fps {
-        val key = activeResolution?.key ?: "?"
-        val declared = spec?.frameRates?.get(activeResolution) ?: 0.0
-        val exposureNs = result.get(CaptureResult.SENSOR_EXPOSURE_TIME) ?: 0L
-        val frameNs = result.get(CaptureResult.SENSOR_FRAME_DURATION) ?: 0L
-        val aeRange = spec?.let { aeFpsRangeFor(it, activeResolution) }
-        "$key: measured ${"%.1f".format(fps)} fps, declared ${"%.0f".format(declared)}, " +
-            "AE range ${aeRange?.let { "[${it.first},${it.second}]" } ?: "not set"}; " +
-            "exposure ${"%.1f".format(exposureNs / 1e6)} ms, frame duration ${"%.1f".format(frameNs / 1e6)} ms"
-    }
-
-    // ---------------------------------------------------------------------
-    // Zoom beyond the declared maximum (Huawei/Honor only, see HUAWEI_MAX_ZOOM)
-    //
-    // If the camera silently clamps the requested zoom (the frame result shows a wider area than requested), we lower
-    // the maximum to what is actually achievable, so that the slider does not promise more than there is. A driver hang cannot be fixed this way:
-    // in that case the camera thread blocks inside a driver call, so we do not go beyond the verified limits at all.
-    // ---------------------------------------------------------------------
-
+    /** If the camera clamps the zoom we offered (see [ZoomControl.verify]), the UI lowers the slider to what is achievable. */
     private fun checkZoomHonored(
         request: CaptureRequest,
         result: TotalCaptureResult,
     ) {
         val spec = spec ?: return
-        val offered = offeredMaxZoom(spec)
-        if (offered <= spec.declaredMaxZoom + 0.01f) return // we request within the declared range — nothing to check
-
         val asked = request.get(CaptureRequest.SCALER_CROP_REGION)
         val applied = result.get(CaptureResult.SCALER_CROP_REGION)
-        if (asked == null || applied == null || !SensorGeometry.isCropClamped(asked.width(), applied.width())) return
+        if (asked == null || applied == null) return
 
-        val limit = SensorGeometry.achievedZoom(spec.activeArray.width, applied.width(), spec.declaredMaxZoom)
-        if (limit >= offered - 0.05f) return
+        val before = zoom.offeredMax(spec)
+        val limit = zoom.verify(spec, asked.width(), applied.width()) ?: return
 
-        Log.w(LOG_TAG, "Camera ${spec.id} crops the requested zoom; max ${offered}x -> ${limit}x")
-        zoomLimits[spec.id] = limit
-        if (wantZoom > limit) wantZoom = limit
-
-        // The UI lowers the slider to the new maximum.
-        val capabilities = buildCapabilities(spec.id)
+        Log.w(LOG_TAG, "Camera ${spec.id} crops the requested zoom; max ${before}x -> ${limit}x")
+        val capabilities = buildCapabilities(spec)
         lastCapabilities = capabilities
-        emit { it.onCapabilities(capabilities) }
+        events.emit { it.onCapabilities(capabilities) }
         applyRepeating()
     }
 
     // =====================================================================
-    // Camera characteristics
+    // What the UI is told about the camera
     // =====================================================================
 
-    private fun isBack(id: String) = !loadSpec(id).isFront
-
-    private fun loadSpec(id: String): CameraSpec = specs[id] ?: specReader.read(id).also { specs[id] = it }
-
-    /** Cameras suitable for showing an image (without depth/IR sensors etc.). */
-    private fun listCameras(): List<CameraDescriptor> {
-        val usable = ArrayList<CameraSpec>()
-        val ids =
-            try {
-                manager.cameraIdList
-            } catch (ex: Exception) {
-                Log.w(LOG_TAG, "Camera id list: ${ex.message}")
-                emptyArray()
-            }
-
-        for (id in ids) {
-            try {
-                val spec = loadSpec(id)
-                if (spec.backwardCompatible && spec.resolutions.isNotEmpty()) usable.add(spec)
-            } catch (ex: Exception) {
-                Log.w(LOG_TAG, "Camera $id skipped: ${ex.message}")
-            }
-        }
-
-        // If there are several cameras looking the same way, we number them: "Back camera 1", "Back camera 2".
-        return usable
-            .groupBy { it.lens }
-            .values
-            .flatMap { group ->
-                if (group.size == 1) {
-                    group.map { CameraDescriptor(it.id, it.lens) }
-                } else {
-                    group.mapIndexed { i, spec -> CameraDescriptor(spec.id, spec.lens, i + 1) }
-                }
-            }.sortedWith(compareBy({ if (isBack(it.id)) 0 else 1 }, { it.id }))
-    }
-
-    private fun buildCapabilities(id: String): CameraCapabilities {
-        val spec = loadSpec(id)
-        val cameras = listCameras()
-        val highSpeed = if (supportsHighSpeed(spec)) resolveHighSpeed(spec) else null
+    private fun buildCapabilities(spec: CameraSpec): CameraCapabilities {
+        val cameras = catalog.list()
+        val fastConfig = if (highSpeed.isSupported(spec)) highSpeed.config(spec) else null
         return CameraCapabilities(
-            camera = cameras.firstOrNull { it.id == id } ?: CameraDescriptor(id, spec.lens),
+            camera = cameras.firstOrNull { it.id == spec.id } ?: CameraDescriptor(spec.id, spec.lens),
             availableCameras = cameras,
             resolutions = spec.resolutions,
             frameRates = spec.frameRates,
-            highSpeedFps = highSpeed?.upper ?: 0,
-            highSpeedResolution = highSpeed?.size,
-            maxZoom = effectiveMaxZoom(spec).toDouble(),
+            highSpeedFps = fastConfig?.upper ?: 0,
+            highSpeedResolution = fastConfig?.size,
+            maxZoom = zoom.maxZoom(spec, highSpeed.isActive(spec)).toDouble(),
             supportsAutoFocus = spec.afMode != CameraMetadata.CONTROL_AF_MODE_OFF,
             supportsFlash = spec.hasFlash,
             supportsTapToFocus = spec.afMode != CameraMetadata.CONTROL_AF_MODE_OFF && spec.maxAfRegions > 0,
@@ -1262,16 +726,32 @@ internal class CameraController(
         return CameraSpecRules.pickResolution(candidates, wantResolution, sensorAspect)
     }
 
-    /** Target frame rate range for the chosen resolution (see [CameraSpecRules.aeFpsRange]). */
-    private fun aeFpsRangeFor(
-        spec: CameraSpec,
-        resolution: CameraResolution?,
-    ) = resolution?.let { CameraSpecRules.aeFpsRange(spec.aeFpsRanges, spec.frameRates[it]) }
+    private fun raiseStatus(status: CameraStatus?) = events.emit { it.onStatus(status) }
 
-    private fun raiseStatus(status: CameraStatus?) = emit { it.onStatus(status) }
+    // =====================================================================
+    // What the parts of the controller get from it
+    // =====================================================================
 
-    private inline fun emit(block: (CameraListener) -> Unit) {
-        for (listener in listeners) block(listener)
+    private inner class Host : SessionHost {
+        override fun activeCamera() = this@CameraController.activeCamera()
+
+        override fun cropForZoom(spec: CameraSpec) = this@CameraController.cropForZoom(spec)
+
+        override fun previewRequest(
+            camera: ActiveCamera,
+            afTrigger: Int,
+        ): CaptureRequest = RequestFactory.preview(camera, afTrigger, requestParams(camera.spec)).build()
+
+        override fun stillRequest(
+            camera: ActiveCamera,
+            target: Surface,
+            jpegOrientation: Int,
+        ): CaptureRequest = RequestFactory.still(camera, target, jpegOrientation, requestParams(camera.spec)).build()
+
+        override val captureCallback: CameraCaptureSession.CaptureCallback
+            get() = this@CameraController.captureCallback
+
+        override fun applyRepeating() = this@CameraController.applyRepeating()
     }
 
     // =====================================================================
@@ -1294,25 +774,13 @@ internal class CameraController(
     private inner class SessionCb(
         private val generation: Int,
         private val resolution: CameraResolution,
-        private val highSpeed: Boolean,
+        private val isHighSpeed: Boolean,
         private val withStill: Boolean,
     ) : CameraCaptureSession.StateCallback() {
-        override fun onConfigured(session: CameraCaptureSession) = onSessionConfigured(generation, session, resolution, highSpeed)
+        override fun onConfigured(session: CameraCaptureSession) = onSessionConfigured(generation, session, resolution, isHighSpeed)
 
         override fun onConfigureFailed(session: CameraCaptureSession) =
-            onSessionConfigureFailed(generation, resolution, highSpeed, withStill)
-    }
-
-    /** Result of the photo: success arrives via ImageReader, and here only the error. */
-    private inner class StillCb : CameraCaptureSession.CaptureCallback() {
-        override fun onCaptureFailed(
-            session: CameraCaptureSession,
-            request: CaptureRequest,
-            failure: android.hardware.camera2.CaptureFailure,
-        ) {
-            Log.w(LOG_TAG, "Still capture failed: reason ${failure.reason}")
-            emit { it.onPhotoFailed() }
-        }
+            onSessionConfigureFailed(generation, resolution, isHighSpeed, withStill)
     }
 
     private inner class CaptureCb : CameraCaptureSession.CaptureCallback() {
@@ -1323,15 +791,11 @@ internal class CameraController(
         ) = this@CameraController.onCaptureCompleted(request, result)
     }
 
-    companion object {
-        private const val FOCUS_HOLD_MS = 1200L // how long to hold the focus lock after a touch
-        private const val FOCUS_TIMEOUT_MS = 4000L // maximum wait for the focus result
-        private const val MAX_RETRY_DELAY_MS = 8000L
-        private const val CAPABILITIES_FALLBACK_MS = 1500L
-        private const val JPEG_QUALITY: Byte = 95
-        private const val CAPTURE_WAIT_FOR_FOCUS_MS = 1500L // how long a photo waits for tap focus
+    private companion object {
+        const val MAX_RETRY_DELAY_MS = 8000L
+        const val CAPABILITIES_FALLBACK_MS = 1500L
 
         /** If the UI never connected (the process was started not to show the screen) — we do not keep the camera. */
-        private const val WARM_UP_TIMEOUT_MS = 15_000L
+        const val WARM_UP_TIMEOUT_MS = 15_000L
     }
 }

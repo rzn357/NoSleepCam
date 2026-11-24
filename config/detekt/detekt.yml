@@ -22,6 +22,9 @@ complexity:
     # Android views (drawing + gestures) are naturally method-heavy; 11 (the default) is too tight for them.
     allowedFunctionsPerClass: 25
     allowedFunctionsPerFile: 25
+    # The limit is about a class's public surface. A state machine such as CameraController has many small private
+    # handlers for Camera2 callbacks; counting them would only push those into needless indirection.
+    ignorePrivate: true
 
 naming:
   FunctionNaming:
