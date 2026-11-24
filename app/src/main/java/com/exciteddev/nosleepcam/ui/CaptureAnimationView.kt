@@ -23,7 +23,7 @@ import kotlin.math.sin
  * Draws only while the animation runs and does not handle touches. The coordinates of [play] are in this view's system
  * (it overlays the preview and the thumbnail).
  */
-class CaptureAnimationView(
+internal class CaptureAnimationView(
     context: Context,
 ) : View(context) {
     private val dp = resources.displayMetrics.density

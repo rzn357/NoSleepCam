@@ -18,6 +18,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
+import com.exciteddev.nosleepcam.LOG_TAG
 import java.io.File
 import java.io.IOException
 
@@ -27,7 +28,6 @@ import java.io.IOException
  * the WRITE_EXTERNAL_STORAGE permission (MainActivity asks for it before taking a photo).
  */
 internal object PhotoSaver {
-    private const val TAG = "NoSleepCam"
     private const val FOLDER = "DCIM/Camera"
 
     /** Writes the JPEG and returns its gallery URI; null — failed. Call off the UI thread. */
@@ -39,7 +39,7 @@ internal object PhotoSaver {
         try {
             if (Build.VERSION.SDK_INT >= 29) Api29.save(context, jpeg, takenAtMs) else saveLegacy(context, jpeg, takenAtMs)
         } catch (ex: Exception) {
-            Log.w(TAG, "Save photo: ${ex.message}")
+            Log.w(LOG_TAG, "Save photo: ${ex.message}")
             null
         }
 
@@ -52,7 +52,7 @@ internal object PhotoSaver {
         try {
             if (Build.VERSION.SDK_INT >= 29) Api29.thumbnail(context, uri, sizePx) else thumbnailLegacy(context, uri, sizePx)
         } catch (ex: Exception) {
-            Log.w(TAG, "Load thumbnail: ${ex.message}")
+            Log.w(LOG_TAG, "Load thumbnail: ${ex.message}")
             null
         }
 

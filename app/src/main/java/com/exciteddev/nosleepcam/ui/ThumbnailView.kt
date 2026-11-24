@@ -15,7 +15,7 @@ import android.view.View
  * A small circle in the bottom-left corner with the last photo (as in the Huawei camera): 40 dp, the photo is cropped to a circle
  * with a thin white rim. Not shown when empty. Tapping it opens the photo in the gallery.
  */
-class ThumbnailView
+internal class ThumbnailView
     @JvmOverloads
     constructor(
         context: Context,

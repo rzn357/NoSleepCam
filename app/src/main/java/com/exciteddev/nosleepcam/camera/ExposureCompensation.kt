@@ -1,5 +1,6 @@
 package com.exciteddev.nosleepcam.camera
 
+import com.exciteddev.nosleepcam.formatNumber
 import kotlin.math.abs
 import kotlin.math.roundToInt
 

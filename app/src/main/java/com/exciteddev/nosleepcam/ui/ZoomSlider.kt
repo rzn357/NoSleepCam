@@ -12,10 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.animation.DecelerateInterpolator
-import java.math.RoundingMode
-import java.text.DecimalFormat
-import java.text.DecimalFormatSymbols
-import java.util.Locale
+import com.exciteddev.nosleepcam.formatNumber
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.pow
@@ -38,7 +35,7 @@ import kotlin.math.sqrt
  *
  * All sizes are in dp.
  */
-class ZoomSlider
+internal class ZoomSlider
     @JvmOverloads
     constructor(
         context: Context,
@@ -514,38 +511,10 @@ class ZoomSlider
             private const val SLOT_SWAP_MS = 220L
             private const val JUMP_MS = 250L
 
-            private var formatter: DecimalFormat? = null
-            private var bigFormatter: DecimalFormat? = null
-            private var formatterLocale: Locale? = null
+            /** Magnification text honouring the device language: "1.5x" or "2x". */
+            fun format(zoom: Double): String = formatNumber(zoom, "0.#") + "x"
 
-            /** The formatter cache is reset if the device language has changed. UI thread only. */
-            private fun currentLocale(): Locale {
-                val locale = Locale.getDefault()
-                if (formatterLocale != locale) {
-                    formatter = null
-                    bigFormatter = null
-                    formatterLocale = locale
-                }
-                return locale
-            }
-
-            private fun newFormat(
-                pattern: String,
-                locale: Locale,
-            ) = DecimalFormat(pattern, DecimalFormatSymbols.getInstance(locale)).apply { roundingMode = RoundingMode.HALF_UP }
-
-            /** Magnification text without "x", honouring the device language: "1.5" or "2". UI thread only. */
-            fun formatNumber(zoom: Double): String {
-                val locale = currentLocale()
-                return (formatter ?: newFormat("0.#", locale).also { formatter = it }).format(zoom)
-            }
-
-            /** The big number in the middle of the screen always has a decimal digit, as in Huawei ("2.0"). UI thread only. */
-            fun formatBigNumber(zoom: Double): String {
-                val locale = currentLocale()
-                return (bigFormatter ?: newFormat("0.0", locale).also { bigFormatter = it }).format(zoom)
-            }
-
-            fun format(zoom: Double): String = formatNumber(zoom) + "x"
+            /** The big number in the middle of the screen always has a decimal digit, as in Huawei ("2.0"). */
+            fun formatBigNumber(zoom: Double): String = formatNumber(zoom, "0.0")
         }
     }

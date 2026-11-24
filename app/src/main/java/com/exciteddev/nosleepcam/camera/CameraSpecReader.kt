@@ -10,9 +10,8 @@ import android.hardware.camera2.params.StreamConfigurationMap
 import android.os.Build
 import android.util.Log
 import android.util.Size
+import com.exciteddev.nosleepcam.LOG_TAG
 import com.exciteddev.nosleepcam.StartupTrace
-
-private const val TAG = "NoSleepCam"
 
 /** Reads a [CameraSpec] from the system's `CameraCharacteristics`. Every read is a system call, so callers cache the result. */
 internal class CameraSpecReader(
@@ -100,7 +99,7 @@ internal class CameraSpecReader(
                 val frameNs = map.getOutputMinFrameDuration(SurfaceTexture::class.java, size)
                 CameraSpecRules.declaredFrameRate(frameNs, maxAeFps)?.let { rates[CameraResolution(size.width, size.height)] = it }
             } catch (ex: Exception) {
-                Log.w(TAG, "Frame duration ${size.width}x${size.height}: ${ex.message}")
+                Log.w(LOG_TAG, "Frame duration ${size.width}x${size.height}: ${ex.message}")
             }
         }
         return rates
@@ -131,7 +130,7 @@ internal class CameraSpecReader(
                     }
                 }.sortedByDescending { it.size.pixels }
         } catch (ex: Exception) {
-            Log.w(TAG, "High-speed configs: ${ex.message}")
+            Log.w(LOG_TAG, "High-speed configs: ${ex.message}")
             emptyList()
         }
     }
@@ -141,7 +140,7 @@ internal class CameraSpecReader(
         try {
             ch.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)?.map { it.lower to it.upper } ?: emptyList()
         } catch (ex: Exception) {
-            Log.w(TAG, "AE fps ranges: ${ex.message}")
+            Log.w(LOG_TAG, "AE fps ranges: ${ex.message}")
             emptyList()
         }
 

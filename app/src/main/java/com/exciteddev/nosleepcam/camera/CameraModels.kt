@@ -1,22 +1,10 @@
 package com.exciteddev.nosleepcam.camera
 
-import java.math.RoundingMode
-import java.text.DecimalFormat
-import java.text.DecimalFormatSymbols
-import java.util.Locale
+import com.exciteddev.nosleepcam.formatNumber
 import kotlin.math.abs
 
-/** Formats a number with a pattern (e.g. "0.#") using the device language's separator; the midpoint rounds up. */
-internal fun formatNumber(
-    value: Double,
-    pattern: String,
-): String =
-    DecimalFormat(pattern, DecimalFormatSymbols.getInstance(Locale.getDefault()))
-        .apply { roundingMode = RoundingMode.HALF_UP }
-        .format(value)
-
 /** A preview frame size supported by the camera. */
-data class CameraResolution(
+internal data class CameraResolution(
     val width: Int,
     val height: Int,
 ) {
@@ -74,7 +62,7 @@ data class CameraResolution(
  * One physical/logical camera of the device (back, front, etc.). The name shown to the user is built by the UI
  * from [lens] and [number] (set only when several cameras look the same way: "Back camera 1", "Back camera 2").
  */
-data class CameraDescriptor(
+internal data class CameraDescriptor(
     val id: String,
     val lens: LensFacing,
     val number: Int? = null,
@@ -100,7 +88,7 @@ internal sealed interface CameraStatus {
 }
 
 /** Capabilities of the opened camera: what can be shown to the user in the UI. */
-class CameraCapabilities(
+internal class CameraCapabilities(
     val camera: CameraDescriptor,
     val availableCameras: List<CameraDescriptor>,
     /** Supported resolutions, from the largest to the smallest. */

@@ -21,8 +21,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
-import android.window.OnBackInvokedCallback
-import android.window.OnBackInvokedDispatcher
 import com.exciteddev.nosleepcam.camera.CameraCapabilities
 import com.exciteddev.nosleepcam.camera.CameraController
 import com.exciteddev.nosleepcam.camera.CameraDescriptor
@@ -38,6 +36,7 @@ import com.exciteddev.nosleepcam.ui.HighSpeedState
 import com.exciteddev.nosleepcam.ui.SettingsPanel
 import com.exciteddev.nosleepcam.ui.SettingsUiState
 import com.exciteddev.nosleepcam.ui.message
+import java.util.concurrent.Executors
 
 /**
  * Single screen: full-screen camera with the zoom slider, flash and settings on top.
@@ -48,6 +47,7 @@ import com.exciteddev.nosleepcam.ui.message
 @Suppress("TooManyFunctions")
 class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
+    private val background = Executors.newSingleThreadExecutor() // reading the gallery thumbnail
     private lateinit var controller: CameraController
     private lateinit var prefs: Prefs
     private lateinit var root: FrameLayout
@@ -67,7 +67,7 @@ class MainActivity : Activity() {
     private var zoomFactor = 1.0
     private var flashOn = false
     private var highSpeed = false // high-speed mode; deliberately not persisted between launches
-    private var backCallback: Any? = null
+    private var backInterception: BackInterception? = null // API 33+ only, see setBackInterception
 
     private lateinit var previewView: CameraPreviewView
     private var captureAnimation: CaptureAnimationView? = null
@@ -195,6 +195,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         controller.removeListener(cameraListener)
         ui.removeCallbacksAndMessages(null)
+        background.shutdown()
         super.onDestroy()
     }
 
@@ -302,30 +303,29 @@ class MainActivity : Activity() {
                 checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
         when (ControlRules.photoRequest(highSpeed, capabilities != null, previewView.canCapture, needsStoragePermission)) {
             ControlRules.PhotoRequest.Take -> {
-                Unit
+                takePhoto()
             }
 
             ControlRules.PhotoRequest.CameraNotReady -> {
-                return
+                Unit
             }
 
             ControlRules.PhotoRequest.HighSpeed -> {
                 showTransientStatus(getString(R.string.photo_unavailable_high_speed))
-                return
             }
 
             ControlRules.PhotoRequest.Unavailable -> {
                 showTransientStatus(getString(R.string.photo_unavailable))
-                return
             }
 
             ControlRules.PhotoRequest.NeedsStoragePermission -> {
                 showTransientStatus(getString(R.string.photo_storage_permission))
                 requestPermissions(arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQUEST_STORAGE)
-                return
             }
         }
+    }
 
+    private fun takePhoto() {
         // The thumbnail circle must be laid out to know where to fly; a freshly created overlay gets laid out on the next frame.
         val overlay = ensureOverlay()
         val target = overlay.thumbnailBounds()
@@ -387,13 +387,13 @@ class MainActivity : Activity() {
     private fun loadLastPhotoThumbnail() {
         val saved = prefs.lastPhoto?.let(Uri::parse) ?: return
         lastPhotoUri = saved
-        Thread {
+        background.execute {
             val bitmap = PhotoSaver.loadThumbnail(this, saved, THUMBNAIL_PX)
             ui.post {
                 // If a new photo has been taken in the meantime, don't overwrite it.
                 if (bitmap != null && !isDestroyed && !capturing && overlay?.thumbnailImage == null) overlay?.setThumbnail(bitmap)
             }
-        }.start()
+        }
     }
 
     private fun openLastPhoto() {
@@ -591,8 +591,7 @@ class MainActivity : Activity() {
     // The "Back" button closes the settings panel
     // ------------------------------------------------------------------
 
-    // On Android 13+ the "Back" gesture is handled by an OnBackInvokedCallback (see setBackInterception), and this method
-    // remains for older versions, where it is the one that gets called.
+    // On Android 13+ the "Back" gesture goes through setBackInterception; this method serves older versions.
     @SuppressLint("GestureBackNavigation")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
@@ -605,21 +604,12 @@ class MainActivity : Activity() {
         super.onBackPressed()
     }
 
-    /**
-     * Android 13+ does not call onBackPressed for the "Back" gesture — a separate handler is needed.
-     * We register it only while the settings panel is open, so that otherwise "Back" works as usual.
-     */
+    /** Android 13+ needs a registered callback for the "Back" gesture (see [BackInterception]); older systems use [onBackPressed]. */
     private fun setBackInterception(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < 33) return
 
-        if (enabled && backCallback == null) {
-            val callback = OnBackInvokedCallback { closeSettings() }
-            backCallback = callback
-            onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
-        } else if (!enabled) {
-            (backCallback as? OnBackInvokedCallback)?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
-            backCallback = null
-        }
+        val interception = backInterception ?: BackInterception(this, ::closeSettings).also { backInterception = it }
+        interception.setEnabled(enabled)
     }
 
     private companion object {

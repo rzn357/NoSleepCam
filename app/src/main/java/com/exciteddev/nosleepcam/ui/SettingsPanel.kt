@@ -20,7 +20,7 @@ import com.exciteddev.nosleepcam.camera.CameraResolution
 import kotlin.math.roundToInt
 
 /** High-speed mode as the settings panel shows it; absent from [SettingsUiState] when the camera has none. */
-data class HighSpeedState(
+internal data class HighSpeedState(
     val fps: Int,
     /** The frame size the camera dictates in this mode, if known. */
     val resolution: CameraResolution?,
@@ -28,7 +28,7 @@ data class HighSpeedState(
 )
 
 /** Everything the settings panel shows; the activity builds a new one whenever something changes. */
-data class SettingsUiState(
+internal data class SettingsUiState(
     val resolutions: List<CameraResolution>,
     val frameRates: Map<CameraResolution, Double>,
     val selectedResolution: CameraResolution?,
@@ -50,7 +50,7 @@ private class ResolutionItem(
  * Settings panel: resolution choice, high-speed mode, (if there are several cameras) camera choice and the app language.
  * Created only on the first tap on the gear — this speeds up startup.
  */
-class SettingsPanel(
+internal class SettingsPanel(
     context: Context,
 ) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density

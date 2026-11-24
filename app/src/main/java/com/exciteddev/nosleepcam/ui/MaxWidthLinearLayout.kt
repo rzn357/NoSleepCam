@@ -5,7 +5,7 @@ import android.util.AttributeSet
 import android.widget.LinearLayout
 
 /** LinearLayout that is no wider than [maxWidthPx] (the equivalent of MaximumWidthRequest). */
-class MaxWidthLinearLayout
+internal class MaxWidthLinearLayout
     @JvmOverloads
     constructor(
         context: Context,

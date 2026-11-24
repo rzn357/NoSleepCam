@@ -22,14 +22,13 @@ import android.os.HandlerThread
 import android.util.Log
 import android.util.Range
 import android.view.Surface
+import com.exciteddev.nosleepcam.LOG_TAG
 import com.exciteddev.nosleepcam.Prefs
 import com.exciteddev.nosleepcam.StartupTrace
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.roundToInt
-
-private const val TAG = "NoSleepCam"
 
 /** Geometry of the preview buffer — needed to rotate and fit the image correctly. */
 internal data class PreviewGeometry(
@@ -274,7 +273,7 @@ internal class CameraController private constructor(
             try {
                 texture.release()
             } catch (ex: Exception) {
-                Log.w(TAG, "Texture release: ${ex.message}")
+                Log.w(LOG_TAG, "Texture release: ${ex.message}")
             }
         }
 
@@ -381,7 +380,7 @@ internal class CameraController private constructor(
                     return wantCameraId
                 }
             } catch (ex: Exception) {
-                Log.w(TAG, "Camera $wantCameraId unavailable: ${ex.message}")
+                Log.w(LOG_TAG, "Camera $wantCameraId unavailable: ${ex.message}")
             }
         }
 
@@ -396,7 +395,7 @@ internal class CameraController private constructor(
     }
 
     private fun handleLost(reason: String) {
-        Log.w(TAG, "Camera lost: $reason")
+        Log.w(LOG_TAG, "Camera lost: $reason")
         closeCamera()
         raiseStatus(CameraStatus.ConnectionLost)
         scheduleRetry()
@@ -614,7 +613,7 @@ internal class CameraController private constructor(
             // Perhaps it was precisely the combination of the preview with the JPEG stream that was rejected. We don't discard the resolution because of that:
             // we try the same one without photos (then photos are unavailable for it).
             blockedStill.add(failedSpec.id to resolution)
-            Log.w(TAG, "Configure with JPEG failed for ${resolution.key}, retrying without")
+            Log.w(LOG_TAG, "Configure with JPEG failed for ${resolution.key}, retrying without")
             reconcile()
             return
         }
@@ -622,7 +621,7 @@ internal class CameraController private constructor(
         if (highSpeed) {
             // We don't touch the regular size list: it was the high-speed mode of this size that was rejected.
             blockedHighSpeed.add(failedSpec.id to resolution)
-            Log.w(TAG, "High-speed configure failed for ${resolution.key}")
+            Log.w(LOG_TAG, "High-speed configure failed for ${resolution.key}")
 
             if (resolveHighSpeed(failedSpec) == null) {
                 failedSpec.highSpeedBroken = true
@@ -636,7 +635,7 @@ internal class CameraController private constructor(
         }
 
         blocked.add(failedSpec.id to resolution)
-        Log.w(TAG, "Configure failed for ${resolution.key}")
+        Log.w(LOG_TAG, "Configure failed for ${resolution.key}")
 
         val next = resolveResolution()
         if (next != null) {
@@ -661,21 +660,21 @@ internal class CameraController private constructor(
         try {
             session?.close()
         } catch (ex: Exception) {
-            Log.w(TAG, "Session close: ${ex.message}")
+            Log.w(LOG_TAG, "Session close: ${ex.message}")
         }
         session = null
 
         try {
             device?.close()
         } catch (ex: Exception) {
-            Log.w(TAG, "Device close: ${ex.message}")
+            Log.w(LOG_TAG, "Device close: ${ex.message}")
         }
         device = null
 
         try {
             surface?.release()
         } catch (ex: Exception) {
-            Log.w(TAG, "Surface release: ${ex.message}")
+            Log.w(LOG_TAG, "Surface release: ${ex.message}")
         }
         surface = null
 
@@ -771,7 +770,7 @@ internal class CameraController private constructor(
             val request = buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build()
             camera.session.setRepeatingRequest(request, captureCallback, handler)
         } catch (ex: Exception) {
-            Log.w(TAG, "setRepeatingRequest: ${ex.message}")
+            Log.w(LOG_TAG, "setRepeatingRequest: ${ex.message}")
         }
     }
 
@@ -804,7 +803,7 @@ internal class CameraController private constructor(
             highSpeedSession.setRepeatingBurst(requests, captureCallback, handler)
             StartupTrace.req { "HS burst: setRepeatingBurst returned" }
         } catch (ex: Exception) {
-            Log.w(TAG, "High-speed burst: ${ex.message}")
+            Log.w(LOG_TAG, "High-speed burst: ${ex.message}")
             StartupTrace.req { "HS burst EXCEPTION: ${ex.javaClass.simpleName}: ${ex.message}" }
         }
     }
@@ -902,7 +901,7 @@ internal class CameraController private constructor(
 
             camera.session.capture(builder.build(), stillCallback, handler)
         } catch (ex: Exception) {
-            Log.w(TAG, "capturePhoto: ${ex.message}")
+            Log.w(LOG_TAG, "capturePhoto: ${ex.message}")
             emit { it.onPhotoFailed() }
         }
     }
@@ -913,7 +912,7 @@ internal class CameraController private constructor(
             try {
                 source.acquireNextImage()
             } catch (ex: Exception) {
-                Log.w(TAG, "acquireNextImage: ${ex.message}")
+                Log.w(LOG_TAG, "acquireNextImage: ${ex.message}")
                 null
             } ?: return
 
@@ -979,7 +978,7 @@ internal class CameraController private constructor(
             session.capture(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_START).build(), captureCallback, handler)
             session.setRepeatingRequest(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
         } catch (ex: Exception) {
-            Log.w(TAG, "startFocus: ${ex.message}")
+            Log.w(LOG_TAG, "startFocus: ${ex.message}")
             focusPhase = FocusPhase.None
             return
         }
@@ -1022,7 +1021,7 @@ internal class CameraController private constructor(
         try {
             camera.session.capture(buildRequest(camera, trigger).build(), captureCallback, handler)
         } catch (ex: Exception) {
-            Log.w(TAG, "triggerAf($trigger): ${ex.message}")
+            Log.w(LOG_TAG, "triggerAf($trigger): ${ex.message}")
         }
     }
 
@@ -1139,7 +1138,7 @@ internal class CameraController private constructor(
         val limit = SensorGeometry.achievedZoom(spec.activeArray.width, applied.width(), spec.declaredMaxZoom)
         if (limit >= spec.maxZoom - 0.05f) return
 
-        Log.w(TAG, "Camera ${spec.id} crops the requested zoom; max ${spec.maxZoom}x -> ${limit}x")
+        Log.w(LOG_TAG, "Camera ${spec.id} crops the requested zoom; max ${spec.maxZoom}x -> ${limit}x")
         spec.maxZoom = limit
         if (wantZoom > limit) wantZoom = limit
 
@@ -1165,7 +1164,7 @@ internal class CameraController private constructor(
             try {
                 manager.cameraIdList
             } catch (ex: Exception) {
-                Log.w(TAG, "Camera id list: ${ex.message}")
+                Log.w(LOG_TAG, "Camera id list: ${ex.message}")
                 emptyArray()
             }
 
@@ -1174,7 +1173,7 @@ internal class CameraController private constructor(
                 val spec = loadSpec(id)
                 if (spec.backwardCompatible && spec.resolutions.isNotEmpty()) usable.add(spec)
             } catch (ex: Exception) {
-                Log.w(TAG, "Camera $id skipped: ${ex.message}")
+                Log.w(LOG_TAG, "Camera $id skipped: ${ex.message}")
             }
         }
 
@@ -1269,7 +1268,7 @@ internal class CameraController private constructor(
             request: CaptureRequest,
             failure: android.hardware.camera2.CaptureFailure,
         ) {
-            Log.w(TAG, "Still capture failed: reason ${failure.reason}")
+            Log.w(LOG_TAG, "Still capture failed: reason ${failure.reason}")
             emit { it.onPhotoFailed() }
         }
     }
@@ -1331,7 +1330,7 @@ internal class CameraController private constructor(
                     if (!controller.uiAttached) controller.setActive(false)
                 }, WARM_UP_TIMEOUT_MS)
             } catch (ex: Exception) {
-                Log.w(TAG, "warmUp failed: ${ex.message}")
+                Log.w(LOG_TAG, "warmUp failed: ${ex.message}")
             }
         }
     }

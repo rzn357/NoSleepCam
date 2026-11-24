@@ -20,7 +20,7 @@ import com.exciteddev.nosleepcam.camera.CameraCapabilities
  * Controls over the camera: zoom slider, flash, gear, status and permission request.
  * Contains no camera logic — only display and events (MainActivity holds the logic).
  */
-class CameraOverlay(
+internal class CameraOverlay(
     context: Context,
 ) : FrameLayout(context) {
     private val dp = resources.displayMetrics.density
