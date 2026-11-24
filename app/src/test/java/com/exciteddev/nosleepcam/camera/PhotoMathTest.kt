@@ -1,7 +1,5 @@
-package com.exciteddev.nosleepcam
+package com.exciteddev.nosleepcam.camera
 
-import com.exciteddev.nosleepcam.camera.CameraResolution
-import com.exciteddev.nosleepcam.camera.PhotoMath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test

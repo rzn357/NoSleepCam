@@ -34,7 +34,6 @@ import com.exciteddev.nosleepcam.StartupTrace
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 private const val TAG = "NoSleepCam"
@@ -156,8 +155,8 @@ internal class CameraController private constructor(
     private var focusAutoMode = false
     private var focusStartFrame = 0L
     private var focusToken = 0
-    private var afRegions: Array<MeteringRectangle>? = null
-    private var aeRegions: Array<MeteringRectangle>? = null
+    private var afRegion: SensorRect? = null
+    private var aeRegion: SensorRect? = null
 
     private var lastCapabilities: CameraCapabilities? = null
 
@@ -301,8 +300,8 @@ internal class CameraController private constructor(
 
     fun resetFocus() =
         post {
-            afRegions = null
-            aeRegions = null
+            afRegion = null
+            aeRegion = null
             endFocusLock()
         }
 
@@ -733,17 +732,8 @@ internal class CameraController private constructor(
         }
 
         val crop = cropForZoom(spec)
-        builder.set(CaptureRequest.SCALER_CROP_REGION, crop)
-
-        // A region outside the visible area is ignored by the camera, so we accept it only when it is within the frame.
-        val af = afRegions
-        if (af != null && spec.maxAfRegions > 0 && isVisible(af, crop)) {
-            builder.set(CaptureRequest.CONTROL_AF_REGIONS, af)
-        }
-        val ae = aeRegions
-        if (ae != null && spec.maxAeRegions > 0 && isVisible(ae, crop)) {
-            builder.set(CaptureRequest.CONTROL_AE_REGIONS, ae)
-        }
+        builder.set(CaptureRequest.SCALER_CROP_REGION, crop.toRect())
+        applyTapRegions(builder, spec, crop)
 
         return builder
     }
@@ -790,7 +780,7 @@ internal class CameraController private constructor(
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
             builder.set(CaptureRequest.CONTROL_AF_MODE, spec.highSpeedAfMode)
             builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(config.lower, config.upper))
-            builder.set(CaptureRequest.SCALER_CROP_REGION, cropForZoom(spec))
+            builder.set(CaptureRequest.SCALER_CROP_REGION, cropForZoom(spec).toRect())
 
             val requests = highSpeedSession.createHighSpeedRequestList(builder.build())
             StartupTrace.req { "HS burst: crop=${cropForZoom(spec)} requests=${requests.size}" }
@@ -808,52 +798,26 @@ internal class CameraController private constructor(
     private fun currentZoom(spec: CameraSpec) = wantZoom.coerceIn(1f, maxOf(1f, effectiveMaxZoom(spec)))
 
     /** The sensor area that must be shown at the current zoom (centred). */
-    private fun cropForZoom(spec: CameraSpec): Rect {
-        val zoom = currentZoom(spec)
-        val active = spec.activeArray
-        val width = active.width()
-        val height = active.height()
-        val cropW = (width / zoom).toInt() and 1.inv()
-        val cropH = (height / zoom).toInt() and 1.inv()
-        val left = active.left + (width - cropW) / 2
-        val top = active.top + (height - cropH) / 2
-        return Rect(left, top, left + cropW, top + cropH)
-    }
+    private fun cropForZoom(spec: CameraSpec) = SensorGeometry.cropForZoom(spec.activeArray, currentZoom(spec))
 
     /**
-     * The actually visible part of the sensor: the camera additionally crops the zoom area to the aspect ratio
-     * of the stream (e.g. 16:9 from a 4:3 sensor). Needed to map a touch to sensor coordinates accurately.
+     * Tap focus/metering regions go into a request only when they are inside the visible area:
+     * a region outside it is ignored by the camera.
      */
-    private fun visibleSensorRect(
+    private fun applyTapRegions(
+        builder: CaptureRequest.Builder,
         spec: CameraSpec,
-        stream: CameraResolution,
-    ): Rect {
-        val crop = cropForZoom(spec)
-        val streamAspect = stream.width.toDouble() / stream.height
-        val cropAspect = crop.width().toDouble() / crop.height()
-
-        if (Math.abs(streamAspect - cropAspect) < 1e-3) return crop
-
-        if (cropAspect > streamAspect) {
-            val w = Math.round(crop.height() * streamAspect).toInt()
-            val dx = (crop.width() - w) / 2
-            return Rect(crop.left + dx, crop.top, crop.left + dx + w, crop.bottom)
-        }
-
-        val h = Math.round(crop.width() / streamAspect).toInt()
-        val dy = (crop.height() - h) / 2
-        return Rect(crop.left, crop.top + dy, crop.right, crop.top + dy + h)
+        crop: SensorRect,
+    ) {
+        afRegion
+            ?.takeIf { spec.maxAfRegions > 0 && crop.containsCenterOf(it) }
+            ?.let { builder.set(CaptureRequest.CONTROL_AF_REGIONS, arrayOf(it.toMetering())) }
+        aeRegion
+            ?.takeIf { spec.maxAeRegions > 0 && crop.containsCenterOf(it) }
+            ?.let { builder.set(CaptureRequest.CONTROL_AE_REGIONS, arrayOf(it.toMetering())) }
     }
 
-    private fun isVisible(
-        regions: Array<MeteringRectangle>?,
-        crop: Rect,
-    ): Boolean {
-        val rect = regions?.firstOrNull()?.rect ?: return false
-        val cx = rect.centerX()
-        val cy = rect.centerY()
-        return cx >= crop.left && cx < crop.right && cy >= crop.top && cy < crop.bottom
-    }
+    private fun SensorRect.toMetering() = MeteringRectangle(left, top, width, height, MeteringRectangle.METERING_WEIGHT_MAX)
 
     // =====================================================================
     // Photo
@@ -928,11 +892,8 @@ internal class CameraController private constructor(
                 if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
             )
             val crop = cropForZoom(spec)
-            builder.set(CaptureRequest.SCALER_CROP_REGION, crop)
-            val af = afRegions
-            if (af != null && spec.maxAfRegions > 0 && isVisible(af, crop)) builder.set(CaptureRequest.CONTROL_AF_REGIONS, af)
-            val ae = aeRegions
-            if (ae != null && spec.maxAeRegions > 0 && isVisible(ae, crop)) builder.set(CaptureRequest.CONTROL_AE_REGIONS, ae)
+            builder.set(CaptureRequest.SCALER_CROP_REGION, crop.toRect())
+            applyTapRegions(builder, spec, crop)
 
             builder.set(CaptureRequest.JPEG_ORIENTATION, PhotoMath.jpegOrientation(spec.sensorOrientation, displayRotation, spec.isFront))
             builder.set(CaptureRequest.JPEG_QUALITY, JPEG_QUALITY)
@@ -989,30 +950,10 @@ internal class CameraController private constructor(
             return
         }
 
-        // "Natural" coordinates (s,t) → sensor buffer coordinates (rotating back by sensorOrientation).
-        val sd = s.toDouble()
-        val td = t.toDouble()
-        val (sx, sy) =
-            when (spec.sensorOrientation) {
-                90 -> td to 1 - sd
-                180 -> 1 - sd to 1 - td
-                270 -> 1 - td to sd
-                else -> sd to td
-            }
-
-        val visible = visibleSensorRect(spec, resolution)
-        val px = visible.left + Math.round(sx * visible.width()).toInt()
-        val py = visible.top + Math.round(sy * visible.height()).toInt()
-        var side = maxOf(32, (minOf(visible.width(), visible.height()) * 0.18).toInt())
-
-        val active = spec.activeArray
-        side = minOf(side, minOf(active.width(), active.height()))
-        val left = (px - side / 2).coerceIn(active.left, active.right - side)
-        val top = (py - side / 2).coerceIn(active.top, active.bottom - side)
-
-        val region = MeteringRectangle(left, top, side, side, MeteringRectangle.METERING_WEIGHT_MAX)
-        afRegions = if (spec.maxAfRegions > 0 && !noAf) arrayOf(region) else null
-        aeRegions = if (spec.maxAeRegions > 0) arrayOf(region) else null
+        val visible = SensorGeometry.visibleRect(cropForZoom(spec), resolution.width, resolution.height)
+        val region = SensorGeometry.focusRegion(s, t, spec.sensorOrientation, visible, spec.activeArray)
+        afRegion = if (spec.maxAfRegions > 0 && !noAf) region else null
+        aeRegion = if (spec.maxAeRegions > 0) region else null
 
         if (noAf) {
             // A camera without autofocus (usually the front one): at this point we only meter the exposure.
@@ -1026,8 +967,8 @@ internal class CameraController private constructor(
         focusAutoMode = spec.hasAfAuto
         emit { it.onFocus(FocusStatus.Searching) }
         StartupTrace.req {
-            "TAP s=${"%.2f".format(s)} t=${"%.2f".format(t)} -> sensor ($px,$py) region=[$left,$top ${side}x$side] " +
-                "visible=$visible afMode=${spec.afMode} afRegionsSet=${afRegions != null}"
+            "TAP s=${"%.2f".format(s)} t=${"%.2f".format(t)} -> sensor region=$region " +
+                "visible=$visible afMode=${spec.afMode} afRegionSet=${afRegion != null}"
         }
 
         try {
@@ -1133,8 +1074,7 @@ internal class CameraController private constructor(
     // Actual frame rate (shown next to the flash icon)
     // ---------------------------------------------------------------------
 
-    private var fpsFirstTimestamp = 0L
-    private var fpsCount = 0
+    private val frameRateMeter = FrameRateMeter()
     private var reportedFps = 0
 
     /**
@@ -1142,17 +1082,8 @@ internal class CameraController private constructor(
      * and notifies the UI when the integer value changes.
      */
     private fun measureFrameRate(result: TotalCaptureResult) {
-        val timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: 0L
-        if (timestamp <= 0) return
-
-        if (fpsCount == 0) fpsFirstTimestamp = timestamp
-
-        fpsCount++
-        val span = timestamp - fpsFirstTimestamp
-        if (span < FPS_WINDOW_NS) return
-
-        val fps = (fpsCount - 1) * 1e9 / span
-        fpsCount = 0
+        val timestamp = result.get(CaptureResult.SENSOR_TIMESTAMP) ?: return
+        val fps = frameRateMeter.onFrame(timestamp) ?: return
         traceFps(fps, result)
         publishFrameRate(fps.roundToInt())
     }
@@ -1166,7 +1097,7 @@ internal class CameraController private constructor(
 
     /** The camera was closed or reconfigured — the old value is no longer reliable. */
     private fun resetFrameRate() {
-        fpsCount = 0
+        frameRateMeter.reset()
         publishFrameRate(0)
     }
 
@@ -1201,13 +1132,9 @@ internal class CameraController private constructor(
 
         val asked = request.get(CaptureRequest.SCALER_CROP_REGION)
         val applied = result.get(CaptureResult.SCALER_CROP_REGION)
-        if (asked == null || asked.width() <= 0 || applied == null || applied.width() <= 0) return
+        if (asked == null || applied == null || !SensorGeometry.isCropClamped(asked.width(), applied.width())) return
 
-        // Tolerance 3%: cameras round the area slightly. A narrower area is just fitting to the stream's aspect ratio.
-        if (applied.width() <= asked.width() * 1.03f) return
-
-        val achieved = spec.activeArray.width() / applied.width().toFloat()
-        val limit = maxOf(spec.declaredMaxZoom, floor(achieved * 10f + 0.01f) / 10f)
+        val limit = SensorGeometry.achievedZoom(spec.activeArray.width, applied.width(), spec.declaredMaxZoom)
         if (limit >= spec.maxZoom - 0.05f) return
 
         Log.w(TAG, "Camera ${spec.id} crops the requested zoom; max ${spec.maxZoom}x -> ${limit}x")
@@ -1230,7 +1157,7 @@ internal class CameraController private constructor(
         val name: String,
         val isFront: Boolean,
         val sensorOrientation: Int,
-        val activeArray: Rect,
+        val activeArray: SensorRect,
         /** Maximum digital zoom the camera declares through the standard API. */
         val declaredMaxZoom: Float,
         /** Maximum we offer the user (≥ declared); lowered if the camera does not deliver it. */
@@ -1324,7 +1251,7 @@ internal class CameraController private constructor(
                     ),
                 isFront = facing == CameraMetadata.LENS_FACING_FRONT,
                 sensorOrientation = orientation,
-                activeArray = active,
+                activeArray = active.toSensorRect(),
                 declaredMaxZoom = maxOf(1f, maxZoom),
                 maxZoom =
                     maxOf(
@@ -1435,7 +1362,7 @@ internal class CameraController private constructor(
         val wanted = wantResolution
         if (wanted != null && wanted in candidates) return wanted
 
-        val sensorAspect = spec.activeArray.width().toDouble() / spec.activeArray.height()
+        val sensorAspect = spec.activeArray.width.toDouble() / spec.activeArray.height
         val balanced = candidates.filter { it.pixels <= DEFAULT_PREVIEW_PIXELS }
         if (balanced.isEmpty()) return candidates.last() // even the smallest is too big — take the smallest
 

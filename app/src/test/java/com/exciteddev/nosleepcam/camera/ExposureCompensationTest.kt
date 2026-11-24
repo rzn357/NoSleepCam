@@ -1,6 +1,5 @@
-package com.exciteddev.nosleepcam
+package com.exciteddev.nosleepcam.camera
 
-import com.exciteddev.nosleepcam.camera.ExposureCompensation
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
