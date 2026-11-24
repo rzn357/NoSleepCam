@@ -197,24 +197,25 @@ Kotlin stdlib.
 > the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
 >
 > ```
-> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.exciteddev.nosleepcam.CameraResolutionTest com.exciteddev.nosleepcam.ExposureCompensationTest
+> java -cp <app classes>;<test classes>;junit.jar;hamcrest-core.jar;kotlin-stdlib.jar org.junit.runner.JUnitCore com.exciteddev.nosleepcam.camera.CameraResolutionTest com.exciteddev.nosleepcam.camera.PhotoMathTest
 > ```
 >
 > (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
 
 ## Development
 
-Code quality is checked automatically — locally before every commit and on every push:
+Code quality is checked automatically. The fast checks (formatting and static analysis) also run in a git hook before every
+commit; everything, including the tests, runs in CI:
 
-| Tool | What it checks | Command |
-|---|---|---|
-| [ktlint](https://pinterest.github.io/ktlint/) via [Spotless](https://github.com/diffplug/spotless) | formatting (`ktlint_official` style, rules in `.editorconfig`) | `./gradlew spotlessCheck` · fix: `./gradlew spotlessApply` |
-| [detekt](https://detekt.dev/) | static analysis (config in `config/detekt/detekt.yml`) | `./gradlew detekt` |
-| Android Lint | Android-specific problems; **any warning fails the build** | `./gradlew lintDebug` |
-| JUnit 4 | unit tests of the pure logic (geometry, camera rules, photo maths, control rules, …) | `./gradlew testDebugUnitTest` |
+| Tool | What it checks | Command | Runs automatically |
+|---|---|---|---|
+| [ktlint](https://pinterest.github.io/ktlint/) via [Spotless](https://github.com/diffplug/spotless) | formatting (`ktlint_official` style, rules in `.editorconfig`) | `./gradlew spotlessCheck` · fix: `./gradlew spotlessApply` | pre-commit hook, CI |
+| [detekt](https://detekt.dev/) | static analysis (config in `config/detekt/detekt.yml`) | `./gradlew detekt` | pre-commit hook, CI |
+| Android Lint | Android-specific problems; **any warning fails the build** | `./gradlew lintDebug` | CI |
+| JUnit 4 | unit tests of the pure logic (geometry, camera rules, photo maths, control rules, …) | `./gradlew testDebugUnitTest` | CI only — **not** in the hook |
 
-**Git hook.** `.githooks/pre-commit` runs ktlint and detekt whenever Kotlin or Gradle files are part of a commit. Enable it
-once per clone:
+**Git hook.** `.githooks/pre-commit` runs ktlint and detekt (only these two, so a commit stays fast; no tests) whenever Kotlin
+or Gradle files are part of a commit. Enable it once per clone:
 
 ```bash
 git config core.hooksPath .githooks
