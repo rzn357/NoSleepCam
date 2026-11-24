@@ -459,8 +459,8 @@ internal class CameraController private constructor(
 
     @Suppress("DEPRECATION") // SessionConfiguration — only from API 28, and minSdk = 24
     private fun createSession(resolution: CameraResolution, highSpeed: HighSpeedConfig?) {
-        val device = device!!
-        val texture = texture!!
+        val device = device ?: return
+        val texture = texture ?: return
         try {
             sessionPending = true
             session = null // the old session closes automatically when a new one is created
@@ -518,7 +518,7 @@ internal class CameraController private constructor(
         activeHighSpeed = highSpeed
         focusPhase = FocusPhase.None
 
-        val spec = spec!!
+        val spec = spec ?: return
         raiseGeometry()
 
         // In high-speed mode the frame size is not chosen by the user: the UI must not
@@ -595,11 +595,12 @@ internal class CameraController private constructor(
 
         sessionPending = false
         publishPendingCapabilities()
+        val failedSpec = spec ?: return
 
         if (withStill) {
             // Perhaps it was precisely the combination of the preview with the JPEG stream that was rejected. We don't discard the resolution because of that:
             // we try the same one without photos (then photos are unavailable for it).
-            blockedStill.add(spec!!.id to resolution)
+            blockedStill.add(failedSpec.id to resolution)
             Log.w(TAG, "Configure with JPEG failed for ${resolution.key}, retrying without")
             reconcile()
             return
@@ -607,7 +608,6 @@ internal class CameraController private constructor(
 
         if (highSpeed) {
             // We don't touch the regular size list: it was the high-speed mode of this size that was rejected.
-            val failedSpec = spec!!
             blockedHighSpeed.add(failedSpec.id to resolution)
             Log.w(TAG, "High-speed configure failed for ${resolution.key}")
 
@@ -622,7 +622,7 @@ internal class CameraController private constructor(
             return
         }
 
-        blocked.add(spec!!.id to resolution)
+        blocked.add(failedSpec.id to resolution)
         Log.w(TAG, "Configure failed for ${resolution.key}")
 
         val next = resolveResolution()
@@ -679,18 +679,38 @@ internal class CameraController private constructor(
     // Camera requests: zoom, autofocus mode, regions
     // =====================================================================
 
-    private fun buildRequest(afTrigger: Int): CaptureRequest.Builder {
-        val spec = spec!!
-        val builder = device!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-        builder.addTarget(surface!!)
+    /** Everything a request needs; exists only while the camera is fully set up (see [activeCamera]). */
+    private class ActiveCamera(
+        val device: CameraDevice,
+        val session: CameraCaptureSession,
+        val surface: Surface,
+        val spec: CameraSpec,
+        val resolution: CameraResolution,
+    )
 
+    private fun activeCamera(): ActiveCamera? {
+        val device = device ?: return null
+        val session = session ?: return null
+        val surface = surface ?: return null
+        val spec = spec ?: return null
+        val resolution = activeResolution ?: return null
+        return ActiveCamera(device, session, surface, spec, resolution)
+    }
+
+    /**
+     * Settings shared by the preview and the still-photo requests: exposure, focus mode, flash, zoom and tap regions.
+     * After tap focus the lens is locked in AUTO mode — the photo keeps it too, and torch stays on for the photo as well.
+     */
+    private fun applyCommonSettings(
+        builder: CaptureRequest.Builder,
+        spec: CameraSpec,
+    ) {
         builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
         builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
         if (spec.evMax > spec.evMin) {
             builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, wantEv.coerceIn(spec.evMin, spec.evMax))
         }
         builder.set(CaptureRequest.CONTROL_AF_MODE, if (focusAutoMode) CameraMetadata.CONTROL_AF_MODE_AUTO else spec.afMode)
-        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, afTrigger)
 
         // Torch keeps the flash on in every frame (including during focusing).
         builder.set(
@@ -698,34 +718,45 @@ internal class CameraController private constructor(
             if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
         )
 
-        // Without an explicit range the Honor 10 driver by default keeps the preview at ~25 fps (range [14,25]), although for
-        // most sizes it declares 30; with an explicit [14,30] it gives 30 in good light. The upper bound is the one declared for this size.
-        aeFpsRangeFor(spec, activeResolution)?.let { (lower, upper) ->
-            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(lower, upper))
-        }
-
         val crop = cropForZoom(spec)
         builder.set(CaptureRequest.SCALER_CROP_REGION, crop.toRect())
         applyTapRegions(builder, spec, crop)
+    }
+
+    private fun buildRequest(
+        camera: ActiveCamera,
+        afTrigger: Int,
+    ): CaptureRequest.Builder {
+        val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+        builder.addTarget(camera.surface)
+        applyCommonSettings(builder, camera.spec)
+        builder.set(CaptureRequest.CONTROL_AF_TRIGGER, afTrigger)
+
+        // Without an explicit range the Honor 10 driver by default keeps the preview at ~25 fps (range [14,25]), although for
+        // most sizes it declares 30; with an explicit [14,30] it gives 30 in good light. The upper bound is the one declared for this size.
+        aeFpsRangeFor(camera.spec, camera.resolution)?.let { (lower, upper) ->
+            builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(lower, upper))
+        }
 
         return builder
     }
 
     private fun applyRepeating() {
-        val session = session
+        val camera = activeCamera()
         StartupTrace.req {
             "applyRepeating: session=${session != null} device=${device != null} surface=${surface != null} " +
                 "spec=${spec != null} active=${activeResolution?.key} hs=$activeHighSpeed wantZoom=${"%.2f".format(wantZoom)}"
         }
-        if (session == null || device == null || surface == null || spec == null || activeResolution == null) return
+        if (camera == null) return
 
         if (activeHighSpeed) {
-            applyHighSpeedRepeating(session)
+            applyHighSpeedRepeating(camera)
             return
         }
 
         try {
-            session.setRepeatingRequest(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
+            val request = buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build()
+            camera.session.setRepeatingRequest(request, captureCallback, handler)
         } catch (ex: Exception) {
             Log.w(TAG, "setRepeatingRequest: ${ex.message}")
         }
@@ -736,18 +767,18 @@ internal class CameraController private constructor(
      * We don't add flash, focus regions and triggers here — such a session does not accept everything, and the Honor driver
      * has already hung on invalid parameters.
      */
-    private fun applyHighSpeedRepeating(session: CameraCaptureSession) {
-        val spec = spec!!
-        val config = spec.highSpeedConfigs.firstOrNull { it.size == activeResolution }
+    private fun applyHighSpeedRepeating(camera: ActiveCamera) {
+        val spec = camera.spec
+        val config = spec.highSpeedConfigs.firstOrNull { it.size == camera.resolution }
         if (config == null) {
-            StartupTrace.req { "HS burst: no config for ${activeResolution?.key}" }
+            StartupTrace.req { "HS burst: no config for ${camera.resolution.key}" }
             return
         }
 
         try {
-            val highSpeedSession = session as CameraConstrainedHighSpeedCaptureSession
-            val builder = device!!.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-            builder.addTarget(surface!!)
+            val highSpeedSession = camera.session as CameraConstrainedHighSpeedCaptureSession
+            val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+            builder.addTarget(camera.surface)
 
             builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
             builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
@@ -838,40 +869,25 @@ internal class CameraController private constructor(
     }
 
     private fun doCapturePhoto(displayRotation: Int) {
-        val spec = spec
-        val session = session
+        val camera = activeCamera()
         val reader = reader
         StartupTrace.req {
             "capturePhoto: session=${session != null} reader=${reader != null} hs=$activeHighSpeed rotation=$displayRotation"
         }
-        if (spec == null || session == null || reader == null || device == null || activeHighSpeed) {
+        if (camera == null || reader == null || activeHighSpeed) {
             emit { it.onPhotoFailed() }
             return
         }
 
         try {
-            val builder = device!!.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+            val spec = camera.spec
+            val builder = camera.device.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
             builder.addTarget(reader.surface)
-            builder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
-            // After tap focus the lens is locked in AUTO mode — we keep it for the photo as well.
-            builder.set(CaptureRequest.CONTROL_AF_MODE, if (focusAutoMode) CameraMetadata.CONTROL_AF_MODE_AUTO else spec.afMode)
-            if (spec.evMax > spec.evMin) {
-                builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, wantEv.coerceIn(spec.evMin, spec.evMax))
-            }
-            // Flash in torch mode stays on for the photo as well.
-            builder.set(
-                CaptureRequest.FLASH_MODE,
-                if (wantFlash && spec.hasFlash) CameraMetadata.FLASH_MODE_TORCH else CameraMetadata.FLASH_MODE_OFF,
-            )
-            val crop = cropForZoom(spec)
-            builder.set(CaptureRequest.SCALER_CROP_REGION, crop.toRect())
-            applyTapRegions(builder, spec, crop)
-
+            applyCommonSettings(builder, spec)
             builder.set(CaptureRequest.JPEG_ORIENTATION, PhotoMath.jpegOrientation(spec.sensorOrientation, displayRotation, spec.isFront))
             builder.set(CaptureRequest.JPEG_QUALITY, JPEG_QUALITY)
 
-            session.capture(builder.build(), stillCallback, handler)
+            camera.session.capture(builder.build(), stillCallback, handler)
         } catch (ex: Exception) {
             Log.w(TAG, "capturePhoto: ${ex.message}")
             emit { it.onPhotoFailed() }
@@ -912,17 +928,16 @@ internal class CameraController private constructor(
         s: Float,
         t: Float,
     ) {
-        val spec = spec
-        val resolution = activeResolution
-        val session = session
-        val noAf = spec != null && spec.afMode == CameraMetadata.CONTROL_AF_MODE_OFF
-        if (session == null || spec == null || resolution == null || activeHighSpeed ||
-            (noAf && spec.maxAeRegions == 0)
-        ) {
+        // A high-speed session cannot focus; a camera with neither autofocus nor exposure regions has nothing to do for a tap.
+        val camera = activeCamera()?.takeUnless { activeHighSpeed || it.cannotRespondToTap() }
+        if (camera == null) {
             emit { it.onFocus(FocusStatus.Failed) } // remove the indicator that is already shown
             return
         }
 
+        val spec = camera.spec
+        val noAf = spec.afMode == CameraMetadata.CONTROL_AF_MODE_OFF
+        val resolution = camera.resolution
         val visible = SensorGeometry.visibleRect(cropForZoom(spec), resolution.width, resolution.height)
         val region = SensorGeometry.focusRegion(s, t, spec.sensorOrientation, visible, spec.activeArray)
         afRegion = if (spec.maxAfRegions > 0 && !noAf) region else null
@@ -946,9 +961,10 @@ internal class CameraController private constructor(
 
         try {
             // Reset the previous trigger, then start a new one and update the regions in the repeating request.
-            session.capture(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_CANCEL).build(), captureCallback, handler)
-            session.capture(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_START).build(), captureCallback, handler)
-            session.setRepeatingRequest(buildRequest(CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
+            val session = camera.session
+            session.capture(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_CANCEL).build(), captureCallback, handler)
+            session.capture(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_START).build(), captureCallback, handler)
+            session.setRepeatingRequest(buildRequest(camera, CameraMetadata.CONTROL_AF_TRIGGER_IDLE).build(), captureCallback, handler)
         } catch (ex: Exception) {
             Log.w(TAG, "startFocus: ${ex.message}")
             focusPhase = FocusPhase.None
@@ -962,6 +978,8 @@ internal class CameraController private constructor(
             }
         }, FOCUS_TIMEOUT_MS)
     }
+
+    private fun ActiveCamera.cannotRespondToTap() = spec.afMode == CameraMetadata.CONTROL_AF_MODE_OFF && spec.maxAeRegions == 0
 
     private fun onFocusResult(success: Boolean) {
         val token = focusToken
@@ -985,13 +1003,11 @@ internal class CameraController private constructor(
     }
 
     private fun triggerAf(trigger: Int) {
-        val session = session
-        if (session == null || device == null || surface == null || spec == null || activeHighSpeed) {
-            return // a high-speed session does not accept single requests and triggers
-        }
+        val camera = activeCamera() ?: return
+        if (activeHighSpeed) return // a high-speed session does not accept single requests and triggers
 
         try {
-            session.capture(buildRequest(trigger).build(), captureCallback, handler)
+            camera.session.capture(buildRequest(camera, trigger).build(), captureCallback, handler)
         } catch (ex: Exception) {
             Log.w(TAG, "triggerAf($trigger): ${ex.message}")
         }
