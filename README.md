@@ -1,14 +1,25 @@
 <div align="center">
 
+<img src="docs/logo.svg" alt="NoSleepCam logo" width="120" height="120">
+
 # NoSleepCam
 
-**An Android camera that is always on.**<br>
+**An Android camera that never falls asleep.**<br>
 It opens the camera and keeps it live for as long as the app is open — and starts in a fraction of a second.
+
+[![CI](https://github.com/Nazar356/NoSleepCam/actions/workflows/ci.yml/badge.svg)](https://github.com/Nazar356/NoSleepCam/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/Nazar356/NoSleepCam?color=blue)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam/commits/main)
+[![Repo size](https://img.shields.io/github/repo-size/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam)
+[![Issues](https://img.shields.io/github/issues/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam/issues)
+[![Stars](https://img.shields.io/github/stars/Nazar356/NoSleepCam?style=flat)](https://github.com/Nazar356/NoSleepCam/stargazers)
 
 ![Platform](https://img.shields.io/badge/Android-7.0%2B_(API_24)-3DDC84?logo=android&logoColor=white)
 ![Language](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
 ![Camera](https://img.shields.io/badge/Camera2-API-4285F4)
 ![Dependencies](https://img.shields.io/badge/AndroidX%20%2F%20Material-none-brightgreen)
+![Code style](https://img.shields.io/badge/code%20style-ktlint-4c9aff)
+![Static analysis](https://img.shields.io/badge/static%20analysis-detekt-orange)
 ![Languages](https://img.shields.io/badge/UI-English%20%7C%20%D0%A3%D0%BA%D1%80%D0%B0%D1%97%D0%BD%D1%81%D1%8C%D0%BA%D0%B0-blue)
 
 <br>
@@ -21,26 +32,42 @@ It opens the camera and keeps it live for as long as the app is open — and sta
 
 <br>
 
-A full rewrite of the .NET MAUI app `AlwaysOnCamera` in Kotlin. The motivation was slow startup; all of the original's
-functionality is kept.
+## Why this app exists
+
+The author uses a phone as a **digital microscope** — for example, to repair microelectronics: soldering SMD parts, inspecting
+traces and chips under magnification. For that the camera image must be live **all the time**.
+
+The stock camera app on the phone, and every other camera app the author could find on Google Play, do not keep the camera
+active: after a while the camera "falls asleep" and the preview stops, so the picture has to be woken up again in the middle of
+the work. NoSleepCam does the opposite — the screen stays on, the camera stays open for as long as the app is open, and if
+the camera is taken away (another app, a driver error) the app reconnects on its own.
+
+Everything else — a minimal interface, a Huawei-style zoom slider with up to 10x, tap to focus, brightness, the real frame rate,
+flash as a work light, full-size photos on a double tap — serves that one purpose.
+
+The app is also a full rewrite of the author's earlier .NET MAUI app `AlwaysOnCamera` in Kotlin: the MAUI version started
+slowly (≈ 1.8 s), and the Kotlin one shows the camera in a fraction of that.
 
 | | |
 |---|---|
-| ⚡ **Fast** | camera opened ≈ 100 ms after process start, `TotalTime` ≈ 230–450 ms on a Honor 10 (MAUI: ≈ 1800 ms) |
 | 🌙 **Never sleeps** | the screen stays on and the camera reconnects on its own if it is lost |
+| ⚡ **Fast** | camera opened ≈ 100 ms after process start, `TotalTime` ≈ 230–450 ms on a Honor 10 |
 | 🎯 **Minimal** | just the camera, a zoom slider, the real frame rate, flash and settings |
 | 🪶 **Lean** | no AndroidX, no Material — only framework widgets and the Kotlin stdlib |
 
 ## Contents
 
+- [Why this app exists](#why-this-app-exists)
 - [Screenshots](#screenshots)
 - [Features](#features)
 - [Build and install](#build-and-install)
+- [Development](#development)
 - [Fast startup](#fast-startup)
 - [Tap to focus on the Honor 10](#tap-to-focus-on-the-honor-10)
 - [Project structure](#project-structure)
 - [Differences from the MAUI version](#differences-from-the-maui-version)
 - [Known limitations](#known-limitations)
+- [License](#license)
 
 ## Screenshots
 
@@ -170,7 +197,7 @@ Kotlin stdlib.
 > Evaluate speed on a **Release** build: Debug is always much slower.
 
 > [!NOTE]
-> **Cyrillic in the Windows user path.** `./gradlew test` fails (`Could not find or load main class worker.org.gradle…`):
+> **Cyrillic in the Windows user path.** (Only affects such machines; CI runs the tests on Linux.) `./gradlew test` fails (`Could not find or load main class worker.org.gradle…`):
 > the Gradle worker cannot start from a path with non-ASCII characters. The build and lint work. The tests can be run directly:
 >
 > ```
@@ -178,6 +205,34 @@ Kotlin stdlib.
 > ```
 >
 > (the classes are in `app/build/intermediates/built_in_kotlinc/`). The project folder must not contain Cyrillic either (`aapt2`).
+
+## Development
+
+Code quality is checked automatically — locally before every commit and on every push:
+
+| Tool | What it checks | Command |
+|---|---|---|
+| [ktlint](https://pinterest.github.io/ktlint/) via [Spotless](https://github.com/diffplug/spotless) | formatting (`ktlint_official` style, rules in `.editorconfig`) | `./gradlew spotlessCheck` · fix: `./gradlew spotlessApply` |
+| [detekt](https://detekt.dev/) | static analysis (config in `config/detekt/detekt.yml`) | `./gradlew detekt` |
+| Android Lint | Android-specific problems; **any warning fails the build** | `./gradlew lintDebug` |
+| JUnit 4 | unit tests of the pure logic (geometry, camera rules, photo maths, control rules, …) | `./gradlew testDebugUnitTest` |
+
+**Git hook.** `.githooks/pre-commit` runs ktlint and detekt whenever Kotlin or Gradle files are part of a commit. Enable it
+once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+**CI.** [GitHub Actions](.github/workflows/ci.yml) runs formatting, detekt, Lint, the unit tests and the debug and release
+(R8) builds on every push and pull request, and uploads the reports and the debug APK. Dependabot keeps the Gradle
+dependencies and the actions up to date.
+
+**Architecture in short.** The camera layer (`camera/`) knows nothing about views or strings: it reports data
+(`CameraCapabilities`, `CameraStatus`, `CameraDescriptor`) to a `CameraListener`, and the UI (`ui/`, `MainActivity`) turns it
+into text and pictures. Inside the camera layer the Camera2 state machine (`CameraController`) is kept apart from the parts that
+need no device and are unit-tested: reading characteristics (`CameraSpecReader` → `CameraSpecRules`), sensor geometry
+(`SensorGeometry`) and frame-rate measurement (`FrameRateMeter`).
 
 ## Fast startup
 
@@ -221,14 +276,18 @@ Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF sta
 |---|---|
 | `NoSleepCamApp.kt` | `Application`: camera warm-up before the UI is created |
 | `MainActivity.kt` | the single screen: lifecycle, permission, wiring the camera to the UI |
-| `camera/CameraController.kt` | Camera2: opening, session, zoom, AF, high-speed mode, reconnection |
+| `ControlRules.kt` | what a tap on the flash or on the photo gesture should do (pure, tested) |
+| `camera/CameraController.kt` | the Camera2 state machine: opening, session, zoom, tap focus, photos, high-speed mode, reconnection |
+| `camera/CameraSpec.kt`, `camera/CameraSpecReader.kt`, `camera/CameraSpecRules.kt` | what a camera can do: read from `CameraCharacteristics`, and the pure rules built on it (AF mode, sizes, frame rates, zoom limit) |
+| `camera/SensorGeometry.kt`, `camera/FrameRateMeter.kt` | zoom crop, visible area and tap-focus regions in sensor space; frame rate from sensor timestamps |
+| `camera/CameraModels.kt` | data passed to the UI: resolutions, capabilities, camera descriptors, statuses |
 | `camera/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
 | `camera/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
-| `camera/ExposureCompensation.kt`, `camera/CameraModels.kt` | "sun" position ↔ EV index and label; models |
-| `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
-| `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt` | controls over the camera; the settings panel |
-| `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
+| `camera/ExposureCompensation.kt` | "sun" position ↔ EV index and label |
 | `camera/PhotoSaver.kt`, `camera/PhotoMath.kt` | writing to the gallery (MediaStore) and the thumbnail; JPEG orientation, size selection, file name |
+| `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
+| `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt`, `ui/CameraTexts.kt` | controls over the camera; the settings panel; user-facing texts for camera names and statuses |
+| `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
 | `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape) |
 
 ## Differences from the MAUI version
@@ -249,3 +308,7 @@ Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF sta
   For debugging, a build with `-PstartupTrace=true` slows it down: `adb shell am start -n com.exciteddev.nosleepcam/.MainActivity --ef nsc_slow 10`.
 - Landscape was verified on the Honor 10 with a forced orientation (both directions). Not verified on Android 15+ (insets
   from the system bars in portrait).
+
+## License
+
+[MIT](LICENSE) © 2026 Nazar356
