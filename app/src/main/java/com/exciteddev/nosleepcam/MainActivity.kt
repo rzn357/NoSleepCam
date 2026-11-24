@@ -29,11 +29,9 @@ import com.exciteddev.nosleepcam.camera.CameraResolution
 import com.exciteddev.nosleepcam.camera.CameraStatus
 import com.exciteddev.nosleepcam.camera.PhotoSaver
 import com.exciteddev.nosleepcam.ui.CameraOverlay
+import com.exciteddev.nosleepcam.ui.CameraScreenState
 import com.exciteddev.nosleepcam.ui.CaptureAnimationView
-import com.exciteddev.nosleepcam.ui.HighSpeedState
 import com.exciteddev.nosleepcam.ui.SettingsPanel
-import com.exciteddev.nosleepcam.ui.SettingsUiState
-import com.exciteddev.nosleepcam.ui.message
 import com.exciteddev.nosleepcam.ui.preview.CameraPreviewView
 import com.exciteddev.nosleepcam.ui.preview.PreviewSnapshot
 import java.util.concurrent.Executors
@@ -42,9 +40,9 @@ import java.util.concurrent.Executors
  * Single screen: full-screen camera with the zoom slider, flash and settings on top.
  * The camera keeps running while the app is open; the screen never turns off.
  *
- * It only wires the camera layer to the views (lifecycle, permissions, events); the decisions it makes are in [ControlRules].
+ * Data flows one way: an event (a camera callback, a tap, a permission result) replaces [state] through [update], and [render]
+ * shows what changed — on the views and on the camera. The decisions it makes are in [ControlRules] and [CameraScreenState].
  */
-@Suppress("TooManyFunctions")
 class MainActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     private val background = Executors.newSingleThreadExecutor() // reading the gallery thumbnail
@@ -52,22 +50,17 @@ class MainActivity : Activity() {
     private lateinit var prefs: Prefs
     private lateinit var root: FrameLayout
 
+    // What the screen shows, and the part of it that has already been rendered (null — nothing yet).
+    private var state = CameraScreenState()
+    private var rendered: CameraScreenState? = null
+
     // Created later than the activity itself, so that the first camera frame appears as soon as possible.
     private var overlay: CameraOverlay? = null
     private var settingsPanel: SettingsPanel? = null
 
-    private var appliedResolution: CameraResolution? = null
-    private var capabilities: CameraCapabilities? = null
-    private var selectedCameraId: String? = null
-    private var status: CameraStatus? = null
-    private var permissionNeeded = false
     private var permissionRequested = false
-    private var statusToken = 0
-    private var frameRate = 0
-    private var zoomFactor = 1.0
-    private var flashOn = false
-    private var highSpeed = false // high-speed mode; deliberately not persisted between launches
     private var backInterception: BackInterception? = null // API 33+ only, see setBackInterception
+    private val clearTransientMessage = Runnable { update { it.copy(transientMessage = null) } }
 
     private lateinit var previewView: CameraPreviewView
     private var captureAnimation: CaptureAnimationView? = null
@@ -95,10 +88,7 @@ class MainActivity : Activity() {
             }
 
             override fun onFrameRate(fps: Int) {
-                ui.post {
-                    frameRate = fps
-                    overlay?.setFrameRate(fps)
-                }
+                ui.post { update { it.copy(frameRate = fps) } }
             }
 
             override fun onPhotoSaved(uri: Uri) {
@@ -150,9 +140,10 @@ class MainActivity : Activity() {
         }
 
         // Restore the camera and the resolution. Zoom and flash are deliberately NOT persisted:
-        // on every app launch zoom = 1x and the flash is off.
+        // on every app launch zoom = 1x and the flash is off (the first render hands that to the camera).
         val savedCamera = prefs.cameraId
-        selectedCameraId = savedCamera
+        state = state.copy(selectedCameraId = savedCamera)
+        render()
         controller.setResolution(savedCamera?.let(prefs::resolution))
         controller.setCameraId(savedCamera)
         controller.addListener(cameraListener)
@@ -204,6 +195,66 @@ class MainActivity : Activity() {
         (root.height - root.paddingTop - root.paddingBottom) / resources.displayMetrics.density.toDouble()
 
     // ------------------------------------------------------------------
+    // State → views and camera
+    // ------------------------------------------------------------------
+
+    /** Replaces the state with the result of [change] and shows the difference. */
+    private fun update(change: (CameraScreenState) -> CameraScreenState) {
+        val next = change(state)
+        if (next == state) return
+
+        state = next
+        render()
+    }
+
+    /** Brings the camera, the controls and the settings panel in line with [state]; only what changed since the last call. */
+    private fun render() {
+        val previous = rendered
+        val current = state
+        rendered = current
+
+        syncCamera(previous, current)
+        overlay?.render(previous, current)
+        renderSettings(previous, current)
+    }
+
+    /** The camera takes zoom, flash and high-speed mode from the state, whoever changed them. */
+    private fun syncCamera(
+        previous: CameraScreenState?,
+        current: CameraScreenState,
+    ) {
+        if (previous?.zoom != current.zoom) controller.setZoom(current.zoom)
+        if (previous?.flashOn != current.flashOn) controller.setFlash(current.flashOn)
+        if (previous?.highSpeed != current.highSpeed) controller.setHighSpeed(current.highSpeed)
+    }
+
+    private fun renderSettings(
+        previous: CameraScreenState?,
+        current: CameraScreenState,
+    ) {
+        val wasOpen = previous?.settingsOpen == true
+        if (current.settingsOpen != wasOpen) {
+            if (current.settingsOpen) {
+                val panel = ensureSettingsPanel()
+                panel.bind(current.settingsUiState(contentHeightDp()))
+                panel.visibility = View.VISIBLE
+            } else {
+                settingsPanel?.visibility = View.GONE
+            }
+            setBackInterception(current.settingsOpen)
+            return
+        }
+
+        if (previous == null || !current.settingsOpen) return
+
+        val changed =
+            previous.capabilities !== current.capabilities ||
+                previous.appliedResolution != current.appliedResolution ||
+                previous.highSpeed != current.highSpeed
+        if (changed) settingsPanel?.bind(current.settingsUiState(contentHeightDp()))
+    }
+
+    // ------------------------------------------------------------------
     // Staged UI construction
     // ------------------------------------------------------------------
 
@@ -216,12 +267,9 @@ class MainActivity : Activity() {
 
         StartupTrace.mark { "Creating controls: start" }
         val overlay = CameraOverlay(this)
-        overlay.onZoomChanged = { zoom ->
-            zoomFactor = zoom
-            controller.setZoom(zoom)
-        }
+        overlay.onZoomChanged = { zoom -> update { it.copy(zoom = zoom) } }
         overlay.onFlashClicked = ::onFlashClicked
-        overlay.onSettingsClicked = ::onSettingsClicked
+        overlay.onSettingsClicked = { update { it.copy(settingsOpen = true) } }
         overlay.onGrantClicked = { startCamera(requestIfNeeded = true) }
         overlay.onOpenSystemSettingsClicked = ::openSystemSettings
         overlay.onThumbnailClicked = ::openLastPhoto
@@ -232,12 +280,7 @@ class MainActivity : Activity() {
         this.overlay = overlay
 
         // Catch up on everything that happened while the controls did not exist yet.
-        capabilities?.let { overlay.setCapabilities(it, zoomFactor) }
-        overlay.setFlash(flashOn)
-        overlay.setHighSpeed(highSpeed)
-        overlay.setFrameRate(frameRate)
-        overlay.setStatus(status?.message(this))
-        overlay.setPermissionPanelVisible(permissionNeeded)
+        overlay.render(null, state)
         overlay.layoutFor(contentHeightDp())
         loadLastPhotoThumbnail()
         StartupTrace.mark { "Creating controls: end" }
@@ -258,15 +301,13 @@ class MainActivity : Activity() {
 
         StartupTrace.mark { "Camera permission checked (granted=$granted)" }
 
-        permissionNeeded = !granted
+        update { it.copy(permissionNeeded = !granted) }
         if (!granted) {
             // The permission prompt must be shown right away, without waiting for a frame that will never come.
             ensureOverlay()
             controller.setActive(false)
+            return
         }
-
-        overlay?.setPermissionPanelVisible(!granted)
-        if (!granted) return
 
         // The screen stays on while the app is open — otherwise the camera would "fall asleep" together with the screen.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -294,14 +335,16 @@ class MainActivity : Activity() {
 
     private fun onDoubleTap() {
         StartupTrace.req {
-            "double tap: capturing=$capturing hs=$highSpeed caps=${capabilities != null} canCapture=${previewView.canCapture}"
+            "double tap: capturing=$capturing hs=${state.highSpeed} caps=${state.capabilities != null} canCapture=${previewView.canCapture}"
         }
         if (isDestroyed || capturing) return
 
         val needsStoragePermission =
             Build.VERSION.SDK_INT < 29 &&
                 checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
-        when (ControlRules.photoRequest(highSpeed, capabilities != null, previewView.canCapture, needsStoragePermission)) {
+        val request =
+            ControlRules.photoRequest(state.highSpeed, state.capabilities != null, previewView.canCapture, needsStoragePermission)
+        when (request) {
             ControlRules.PhotoRequest.Take -> {
                 takePhoto()
             }
@@ -421,48 +464,26 @@ class MainActivity : Activity() {
     private fun onCapabilitiesChanged(caps: CameraCapabilities) {
         if (isDestroyed) return
 
-        capabilities = caps
-        selectedCameraId = caps.camera.id
         controller.setCameraId(caps.camera.id)
         // Remember the camera that is really open (it differs from the saved one if that one disappeared).
         if (prefs.cameraId != caps.camera.id) prefs.cameraId = caps.camera.id
-
-        // The camera (or its mode) no longer supports the high rate — turn the mode off.
-        if (highSpeed && caps.highSpeedFps == 0) {
-            highSpeed = false
-            controller.setHighSpeed(false)
-            overlay?.setHighSpeed(false)
-        }
-
-        // Zoom: from 1x to the camera's hardware maximum.
-        val zoom = zoomFactor.coerceIn(caps.minZoom, maxOf(caps.minZoom, caps.maxZoom))
-        if (zoom != zoomFactor) {
-            zoomFactor = zoom
-            controller.setZoom(zoom)
-        }
-        overlay?.setCapabilities(caps, zoom)
-
-        if (isSettingsOpen) refreshSettings()
+        update { it.withCapabilities(caps) }
     }
 
     private fun handleResolutionApplied(resolution: CameraResolution) {
         if (isDestroyed) return
 
-        appliedResolution = resolution
         controller.setResolution(resolution)
-
-        if (isSettingsOpen) refreshSettings()
+        update { it.copy(appliedResolution = resolution) }
     }
 
     private fun onStatusChanged(newStatus: CameraStatus?) {
         if (isDestroyed) return
 
-        status = newStatus
+        update { it.copy(cameraStatus = newStatus) }
 
         // Show the problem message immediately, even if the controls have not been created yet.
         if (newStatus != null) ensureOverlay()
-
-        overlay?.setStatus(newStatus?.message(this))
     }
 
     // ------------------------------------------------------------------
@@ -471,7 +492,7 @@ class MainActivity : Activity() {
 
     private fun onFlashClicked() {
         // The icon is always visible; if the flash cannot be used, explain why nothing happened.
-        when (ControlRules.flashClick(capabilities?.supportsFlash, highSpeed)) {
+        when (ControlRules.flashClick(state.capabilities?.supportsFlash, state.highSpeed)) {
             ControlRules.FlashClick.NoFlash -> {
                 showTransientStatus(getString(R.string.flash_unavailable))
             }
@@ -481,27 +502,21 @@ class MainActivity : Activity() {
             }
 
             ControlRules.FlashClick.Toggle -> {
-                flashOn = !flashOn
-                controller.setFlash(flashOn)
-                overlay?.setFlash(flashOn)
+                update { it.copy(flashOn = !it.flashOn) }
             }
         }
     }
 
     /** Short message for 2 seconds; then the normal state returns. */
     private fun showTransientStatus(text: String) {
-        val token = ++statusToken
-        overlay?.setStatus(text)
-        ui.postDelayed({
-            if (token == statusToken) overlay?.setStatus(status?.message(this))
-        }, TRANSIENT_STATUS_MS)
+        ui.removeCallbacks(clearTransientMessage)
+        update { it.copy(transientMessage = text) }
+        ui.postDelayed(clearTransientMessage, TRANSIENT_STATUS_MS)
     }
 
     // ------------------------------------------------------------------
     // Resolution settings
     // ------------------------------------------------------------------
-
-    private val isSettingsOpen: Boolean get() = settingsPanel?.visibility == View.VISIBLE
 
     /** The settings panel is created only on the first open — this speeds up startup. */
     private fun ensureSettingsPanel(): SettingsPanel {
@@ -513,60 +528,19 @@ class MainActivity : Activity() {
         panel.onResolutionChosen = ::onResolutionChosen
         panel.onCameraChosen = ::onCameraChosen
         panel.onLanguageChosen = ::onLanguageChosen
-        panel.onHighSpeedChanged = ::onHighSpeedChanged
+        panel.onHighSpeedChanged = { on -> update { it.withHighSpeed(on) } }
         root.addView(panel)
         settingsPanel = panel
         return panel
     }
 
-    private fun onSettingsClicked() {
-        val panel = ensureSettingsPanel()
-        refreshSettings()
-        panel.visibility = View.VISIBLE
-        setBackInterception(true)
-    }
-
     private fun closeSettings() {
-        settingsPanel?.visibility = View.GONE
-        setBackInterception(false)
-    }
-
-    private fun refreshSettings() {
-        val caps = capabilities
-        settingsPanel?.bind(
-            SettingsUiState(
-                resolutions = caps?.resolutions.orEmpty(),
-                frameRates = caps?.frameRates.orEmpty(),
-                selectedResolution = appliedResolution,
-                cameras = caps?.availableCameras.orEmpty(),
-                selectedCameraId = selectedCameraId,
-                pageHeightDp = contentHeightDp(),
-                highSpeed =
-                    caps
-                        ?.takeIf { it.highSpeedFps > 0 }
-                        ?.let { HighSpeedState(it.highSpeedFps, it.highSpeedResolution, highSpeed) },
-            ),
-        )
-    }
-
-    private fun onHighSpeedChanged(on: Boolean) {
-        highSpeed = on
-        controller.setHighSpeed(on)
-
-        // A high-speed session has no flash (the request does not contain it) — turn it off and show that on the icon.
-        if (on && flashOn) {
-            flashOn = false
-            controller.setFlash(false)
-            overlay?.setFlash(false)
-        }
-
-        overlay?.setHighSpeed(on)
-        refreshSettings()
+        update { it.copy(settingsOpen = false) }
     }
 
     private fun onResolutionChosen(resolution: CameraResolution) {
         controller.setResolution(resolution)
-        selectedCameraId?.let { prefs.setResolution(it, resolution) }
+        state.selectedCameraId?.let { prefs.setResolution(it, resolution) }
 
         closeSettings()
     }
@@ -580,9 +554,9 @@ class MainActivity : Activity() {
     }
 
     private fun onCameraChosen(camera: CameraDescriptor) {
-        if (camera.id == selectedCameraId) return
+        if (camera.id == state.selectedCameraId) return
 
-        selectedCameraId = camera.id
+        update { it.copy(selectedCameraId = camera.id) }
 
         // Recall the last resolution chosen for this very camera (or null — it will be picked automatically).
         controller.setResolution(prefs.resolution(camera.id))
@@ -597,7 +571,7 @@ class MainActivity : Activity() {
     @SuppressLint("GestureBackNavigation")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (isSettingsOpen) {
+        if (state.settingsOpen) {
             closeSettings()
             return
         }

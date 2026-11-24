@@ -135,7 +135,10 @@ internal class CameraController(
     }
 
     fun setZoom(value: Double) {
-        zoom.requested = value.toFloat()
+        val requested = value.toFloat()
+        if (zoom.requested == requested) return
+
+        zoom.requested = requested
         StartupTrace.req { "setZoom(${"%.2f".format(value)}) posted=${zoomPosted.get()}" }
 
         // The slider generates dozens of events per second — we merge them into a single request update.

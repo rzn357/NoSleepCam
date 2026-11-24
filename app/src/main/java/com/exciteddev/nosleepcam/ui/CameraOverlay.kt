@@ -18,7 +18,7 @@ import com.exciteddev.nosleepcam.camera.CameraCapabilities
 
 /**
  * Controls over the camera: zoom slider, flash, gear, status and permission request.
- * Contains no camera logic — only display and events (MainActivity holds the logic).
+ * Contains no camera logic — only display ([render]) and events (MainActivity holds the logic).
  */
 internal class CameraOverlay(
     context: Context,
@@ -83,8 +83,27 @@ internal class CameraOverlay(
         setBigZoomNumber(ZoomSlider.formatBigNumber(zoomSlider.value))
     }
 
+    /**
+     * Shows [state]. Only what differs from [previous] is touched, so that frequent changes (the frame rate) do not disturb
+     * the rest (a zoom drag in progress); null — nothing was shown yet, show everything (right after the overlay is created).
+     */
+    fun render(
+        previous: CameraScreenState?,
+        state: CameraScreenState,
+    ) {
+        val caps = state.capabilities
+        if (caps != null && previous?.capabilities !== caps) setCapabilities(caps, state.zoom)
+        if (previous?.flashOn != state.flashOn) setFlash(state.flashOn)
+        if (previous?.highSpeed != state.highSpeed) setHighSpeed(state.highSpeed)
+        if (previous?.frameRate != state.frameRate) setFrameRate(state.frameRate)
+        if (previous?.permissionNeeded != state.permissionNeeded) setPermissionPanelVisible(state.permissionNeeded)
+        if (previous?.transientMessage != state.transientMessage || previous?.cameraStatus != state.cameraStatus) {
+            setStatus(state.transientMessage ?: state.cameraStatus?.message(context))
+        }
+    }
+
     /** Applies the camera's capabilities: zoom range and flash availability. */
-    fun setCapabilities(
+    private fun setCapabilities(
         caps: CameraCapabilities,
         zoom: Double,
     ) {
@@ -100,7 +119,7 @@ internal class CameraOverlay(
     }
 
     /** Flash is unavailable in high-speed mode: the icon is dimmed, same as without a hardware flash. */
-    fun setHighSpeed(on: Boolean) {
+    private fun setHighSpeed(on: Boolean) {
         highSpeed = on
         updateFlashAvailability()
     }
@@ -109,24 +128,24 @@ internal class CameraOverlay(
         flashButton.alpha = if (supportsFlash && !highSpeed) 1f else 0.4f
     }
 
-    fun setFlash(on: Boolean) {
+    private fun setFlash(on: Boolean) {
         flashButton.setImageResource(if (on) R.drawable.ic_flash_on else R.drawable.ic_flash_off)
         flashButton.contentDescription =
             context.getString(if (on) R.string.flash_on_description else R.string.flash_off_description)
     }
 
     /** Actual frame rate next to the flash icon; 0 — hide the badge. */
-    fun setFrameRate(fps: Int) {
+    private fun setFrameRate(fps: Int) {
         frameRateBadge.visibility = if (fps > 0) VISIBLE else GONE
         if (fps > 0) frameRateBadge.text = context.getString(R.string.fps_format, fps)
     }
 
-    fun setStatus(status: String?) {
+    private fun setStatus(status: String?) {
         statusBadge.visibility = if (status.isNullOrEmpty()) GONE else VISIBLE
         statusBadge.text = status
     }
 
-    fun setPermissionPanelVisible(visible: Boolean) {
+    private fun setPermissionPanelVisible(visible: Boolean) {
         permissionPanel.visibility = if (visible) VISIBLE else GONE
     }
 
