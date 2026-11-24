@@ -15,7 +15,7 @@ android {
 
     defaultConfig {
         applicationId = "com.exciteddev.nosleepcam"
-        // Android 7.0: same as in the MAUI version. The Honor 10 is supported.
+        // Android 7.0 (the Honor 10 is supported).
         minSdk = 24
         targetSdk = 37
         versionCode = 1

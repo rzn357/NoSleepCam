@@ -7,12 +7,12 @@
 **An Android camera that never falls asleep.**<br>
 It opens the camera and keeps it live for as long as the app is open — and starts in a fraction of a second.
 
-[![CI](https://github.com/Nazar356/NoSleepCam/actions/workflows/ci.yml/badge.svg)](https://github.com/Nazar356/NoSleepCam/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/github/license/Nazar356/NoSleepCam?color=blue)](LICENSE)
-[![Last commit](https://img.shields.io/github/last-commit/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam/commits/main)
-[![Repo size](https://img.shields.io/github/repo-size/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam)
-[![Issues](https://img.shields.io/github/issues/Nazar356/NoSleepCam)](https://github.com/Nazar356/NoSleepCam/issues)
-[![Stars](https://img.shields.io/github/stars/Nazar356/NoSleepCam?style=flat)](https://github.com/Nazar356/NoSleepCam/stargazers)
+[![CI](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml/badge.svg)](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/rzn357/NoSleepCam?color=blue)](LICENSE)
+[![Last commit](https://img.shields.io/github/last-commit/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam/commits/main)
+[![Repo size](https://img.shields.io/github/repo-size/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam)
+[![Issues](https://img.shields.io/github/issues/rzn357/NoSleepCam)](https://github.com/rzn357/NoSleepCam/issues)
+[![Stars](https://img.shields.io/github/stars/rzn357/NoSleepCam?style=flat)](https://github.com/rzn357/NoSleepCam/stargazers)
 
 ![Platform](https://img.shields.io/badge/Android-7.0%2B_(API_24)-3DDC84?logo=android&logoColor=white)
 ![Language](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
@@ -45,9 +45,6 @@ the camera is taken away (another app, a driver error) the app reconnects on its
 Everything else — a minimal interface, a Huawei-style zoom slider with up to 10x, tap to focus, brightness, the real frame rate,
 flash as a work light, full-size photos on a double tap — serves that one purpose.
 
-The app is also a full rewrite of the author's earlier .NET MAUI app `AlwaysOnCamera` in Kotlin: the MAUI version started
-slowly (≈ 1.8 s), and the Kotlin one shows the camera in a fraction of that.
-
 | | |
 |---|---|
 | 🌙 **Never sleeps** | the screen stays on and the camera reconnects on its own if it is lost |
@@ -65,7 +62,6 @@ slowly (≈ 1.8 s), and the Kotlin one shows the camera in a fraction of that.
 - [Fast startup](#fast-startup)
 - [Tap to focus on the Honor 10](#tap-to-focus-on-the-honor-10)
 - [Project structure](#project-structure)
-- [Differences from the MAUI version](#differences-from-the-maui-version)
 - [Known limitations](#known-limitations)
 - [License](#license)
 
@@ -126,8 +122,7 @@ the Honor 10):
   other side (up at low zoom, down at high zoom), and the bright dot is where the ring will be after switching.
 - **Touches.** The scale is opened **only by a touch on the ring** (±35 dp horizontally, ±16 dp vertically). A tap on the
   bright end dot switches the zoom in a jump (1x ↔ 2x). Any other touch, including right next to the ring, is **focus**,
-  not zoom (previously the slider caught touches along its whole 76 dp × scale-height strip, and focus did not work
-  next to it).
+  not zoom (otherwise focus would not work next to the slider).
 - **Scale** (while a finger is on the ring and for ≈1 s after release): a dotted line of ≈240 dp symmetric around the
   frame centre, labels "10x" at the top and "1x" at the bottom, a big number in the middle of the screen ("2.0x"), and the
   ring with a dot follows the finger 1:1 (relatively). The other buttons (fps, flash, gear) are hidden meanwhile. After
@@ -176,6 +171,7 @@ preview; quality 95) with the current zoom, brightness and flash.
 
 ### Permissions and languages
 
+- **No network:** the app declares no `INTERNET` permission and never uses the network.
 - **Camera permission:** requested on the first launch; if denied — a panel with the "Grant access" and "Open settings" buttons.
 - **Languages:** English (`values/strings.xml`, the default) and Ukrainian (`values-uk/strings.xml`). Until the user
   chooses, the app uses the phone's system language if it is one of these two, and English otherwise. In the settings
@@ -247,12 +243,12 @@ need no device and are unit-tested: reading characteristics (`CameraSpecReader` 
 
 Measurements on the Honor 10 (COL-L29, Android 10), Release, cold start (`am start -W`, `TotalTime`):
 
-| | MAUI (from the original's README) | Kotlin |
-|---|---|---|
-| camera opened (from process start) | ≈850 ms | 66–116 ms |
-| `TotalTime` | ≈1800–1900 ms | 222–640 ms (series of 5–7 launches; depends on the phone's load, typically ≈230–450 ms) |
-| first camera frame | ≈2000 ms | 556–1129 ms |
-| APK size (release) | — | ≈126 KB |
+| | Honor 10, release |
+|---|---|
+| camera opened (from process start) | 66–116 ms |
+| `TotalTime` | 222–640 ms (series of 5–7 launches; depends on the phone's load, typically ≈230–450 ms) |
+| first camera frame | 556–1129 ms |
+| APK size (release) | ≈126 KB |
 
 What remains: after the camera is opened, the Honor 10 driver delivers the first frame only after ≈0.5–1.1 s — this is
 hardware latency, and it can only be hidden by opening early (which is what is done).
@@ -290,13 +286,6 @@ Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF sta
 | `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
 | `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape) |
 
-## Differences from the MAUI version
-
-- The icon is a new lens on the same purple (the original was the template ".NET" one).
-- The `INTERNET` and `ACCESS_NETWORK_STATE` permissions were removed — the app does not use the network.
-- A tap on the already selected resolution closes the panel (in MAUI the `CollectionView` did nothing in this case).
-- The settings card does not let touches through to the dimming (a touch on the card's text does not close the panel).
-
 ## Known limitations
 
 - The Android emulator does not apply zoom and has no autofocus — these features are verified only on a real phone.
@@ -311,4 +300,4 @@ Diagnostics: a build with `-PstartupTrace=true`, `adb logcat -s NSC-Req` (AF sta
 
 ## License
 
-[MIT](LICENSE) © 2026 Nazar356
+[MIT](LICENSE) © 2026 ExcitedDev

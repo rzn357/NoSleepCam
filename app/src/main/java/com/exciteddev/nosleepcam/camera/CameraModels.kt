@@ -6,7 +6,7 @@ import java.text.DecimalFormatSymbols
 import java.util.Locale
 import kotlin.math.abs
 
-/** Formats a number with a pattern (e.g. "0.#") using the device language's separator; the midpoint rounds up, as in .NET. */
+/** Formats a number with a pattern (e.g. "0.#") using the device language's separator; the midpoint rounds up. */
 internal fun formatNumber(
     value: Double,
     pattern: String,
