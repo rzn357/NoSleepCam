@@ -41,7 +41,7 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 | 🌙 **Never sleeps** | the screen stays on and the camera reconnects on its own if it is lost |
 | ⚡ **Fast** | camera opened ≈ 100 ms after process start, `TotalTime` ≈ 230–450 ms on a Honor 10 |
 | 🎯 **Minimal** | just the camera, a zoom slider, the real frame rate, flash and settings |
-| 🪶 **Lean** | no AndroidX, no Material — only framework widgets and the Kotlin stdlib |
+| 📦 **Lean** | no AndroidX, no Material — only framework widgets and the Kotlin stdlib |
 
 ## Contents
 
