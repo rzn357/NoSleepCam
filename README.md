@@ -320,7 +320,7 @@ Jetpack was made, so the comparisons are by architecture, not by stopwatch.
 
 - **Cold start is class loading.** Everything that is initialised before the first frame delays the camera. A framework
   `Activity` with a `TextureView` and a few `Canvas`-drawn views (`ZoomSlider`, `FocusIndicatorView`, …) needs none of
-  Compose's runtime, AppCompat's theme inflation or Material's styles. Result: 27 Kotlin files, ≈5.3k lines, a 126 KB APK.
+  Compose's runtime, AppCompat's theme inflation or Material's styles. Result: 41 Kotlin files, ≈5.8k lines, a 126 KB APK.
 - **Each library's job is already done another way.** ViewModel survives rotation — here the activity is not recreated and the
   controller lives in `Application`. Hilt wires an object graph — here the graph is one object. Flow models streams — here
   the only stream is camera callbacks on a single thread, whose ordering the code relies on (the camera list for the UI is
@@ -369,28 +369,14 @@ The decisions (the tap plan, the AF mode of a request, the per-frame state machi
 
 ## Project structure
 
-| File | Purpose |
+| Package | Responsibility |
 |---|---|
-| `NoSleepCamApp.kt` | `Application`: creates the camera controller and warms the camera up before the UI is created |
-| `MainActivity.kt` | the single screen: lifecycle, permission, events → `CameraScreenState` → `render()` |
-| `ControlRules.kt` | what a tap on the flash or on the photo gesture should do (pure, tested) |
-| `camera/CameraController.kt` | the Camera2 state machine: opening, the session, the desired state, reconnection |
-| `camera/TapFocus.kt`, `camera/FocusRules.kt` | tap to focus: regions, AUTO-mode switch, triggers; the pure decisions and the per-frame state machine (tested) |
-| `camera/StillCapture.kt`, `camera/RequestFactory.kt` | photos (JPEG stream, gallery hand-over); building preview, still and high-speed requests |
-| `camera/CameraCatalog.kt`, `camera/ZoomControl.kt`, `camera/HighSpeedPolicy.kt`, `camera/FrameRateReporter.kt` | the cameras and their cached specs; zoom limits; high-speed rejections; the measured frame rate |
-| `camera/CameraListener.kt`, `camera/ActiveCamera.kt` | what the camera reports to the UI; the running camera and what the parts need from the controller |
-| `camera/CameraSpec.kt`, `camera/CameraSpecReader.kt`, `camera/CameraSpecRules.kt` | what a camera can do: read from `CameraCharacteristics`, and the pure rules built on it (AF mode, sizes, frame rates, zoom limit) |
-| `camera/SensorGeometry.kt`, `camera/FrameRateMeter.kt` | zoom crop, visible area and tap-focus regions in sensor space; frame rate from sensor timestamps |
-| `camera/CameraModels.kt` | data passed to the UI: resolutions, capabilities, camera descriptors, statuses |
-| `ui/preview/CameraPreviewView.kt` | `TextureView`, fitting and rotating the frame, touch |
-| `ui/preview/FocusIndicatorView.kt` | focus square, brightness "sun", dotted scale and EV value |
-| `ui/CameraScreenState.kt` | everything the screen shows as one immutable value, with the tested transitions |
-| `camera/ExposureCompensation.kt` | "sun" position ↔ EV index and label |
-| `camera/PhotoSaver.kt`, `camera/PhotoMath.kt` | writing to the gallery (MediaStore) and the thumbnail; JPEG orientation, size selection, file name |
-| `ui/ZoomSlider.kt`, `ui/ZoomZones.kt` | the zoom slider (drawn on a `Canvas`) and its touch zones |
-| `ui/CameraOverlay.kt`, `ui/SettingsPanel.kt`, `ui/CameraTexts.kt` | controls over the camera; the settings panel; user-facing texts for camera names and statuses |
-| `ui/CaptureAnimationView.kt`, `ui/ThumbnailView.kt` | capture animation (the "blink" and the flight into the circle); the circle with the last photo |
-| `Prefs.kt`, `AppLanguage.kt`, `StartupTrace.kt`, `SystemBarInsets.kt`, `BackInterception.kt`, `NumberFormat.kt`, `LogTag.kt` | settings; app language (English / Ukrainian); startup diagnostics; system bars (insets, full-screen landscape); the Android 13+ back gesture; locale-aware number formatting; the log tag |
+| `com.exciteddev.nosleepcam` | the app shell: `Application` (starts the camera before the UI exists), the single `MainActivity`, settings, language, startup diagnostics and system-bar handling |
+| `camera` | everything that talks to Camera2, with no views or strings: `CameraController` (open / session / reconnect), tap focus, photos, request building, the camera catalog and specs, and the pure rules and maths around them (all unit-tested) |
+| `ui` | the screen and its parts: `CameraScreenState` (everything shown, as one immutable value), the overlay, the settings panel, the zoom slider, capture animation and texts |
+| `ui.preview` | the `TextureView` preview (fitting, rotating, touch) and the focus indicator |
+
+Unit tests mirror the same packages under `app/src/test`.
 
 ## Known limitations
 

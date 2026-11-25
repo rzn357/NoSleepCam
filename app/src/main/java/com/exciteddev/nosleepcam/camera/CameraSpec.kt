@@ -24,7 +24,7 @@ internal class CameraSpec(
     /** Maximum we offer the user (≥ declared); the controller lowers it if the camera turns out not to deliver it. */
     val offeredMaxZoom: Float,
     val afMode: Int,
-    /** The camera supports AUTO mode (needed for real tap focus, see CameraController.startFocus). */
+    /** The camera supports AUTO mode (needed for real tap focus, see TapFocus). */
     val hasAfAuto: Boolean,
     val maxAfRegions: Int,
     val maxAeRegions: Int,
