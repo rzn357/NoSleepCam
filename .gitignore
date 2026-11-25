@@ -18,3 +18,9 @@ Thumbs.db
 # Local tooling (not part of the project)
 .claude/
 .mcp.json
+
+# Signing keys
+*.jks
+*.keystore
+keystore.properties
+dist/

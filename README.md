@@ -8,6 +8,7 @@
 It opens the camera and keeps it live for as long as the app is open — and starts in a fraction of a second.
 
 [![CI](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml/badge.svg)](https://github.com/rzn357/NoSleepCam/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rzn357/NoSleepCam?color=blue)](https://github.com/rzn357/NoSleepCam/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/rzn357/NoSleepCam?color=blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/Android-7.0%2B_(API_24)-3DDC84?logo=android&logoColor=white)
 ![Language](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin&logoColor=white)
@@ -47,6 +48,7 @@ flash as a work light, full-size photos on a double tap — serves that one purp
 - [Why this app exists](#why-this-app-exists)
 - [Screenshots](#screenshots)
 - [Features](#features)
+- [Download](#download)
 - [Build and install](#build-and-install)
 - [Development](#development)
 - [Architecture](#architecture)
@@ -171,12 +173,37 @@ preview; quality 95) with the current zoom, brightness and flash.
   `AppLanguage` (the base context is wrapped in `attachBaseContext`, the activity is recreated when the choice changes).
   All code comments and this README are in English.
 
+## Download
+
+Get the latest APK from the [**Releases**](https://github.com/rzn357/NoSleepCam/releases/latest) page, open it on the phone
+and allow installing from this source when Android asks. Android 7.0 (API 24) or newer is required. The camera permission is
+requested on the first start.
+
+Releases are signed with the author's own key. To check that an APK is genuine, compare its signing certificate with this
+SHA-256 fingerprint:
+
+```
+4A:5F:C4:37:83:2E:16:BD:0C:A3:3D:9D:9B:92:ED:82:1C:0A:53:B2:71:27:01:D1:22:B5:97:96:71:E3:8F:6B
+```
+
+```bash
+apksigner verify --print-certs NoSleepCam-1.0.0.apk
+```
+
+Each release also lists the SHA-256 of the APK file itself. Updates install over the previous version because they are signed
+with the same key.
+
 ## Build and install
 
 ```bash
 ./gradlew assembleDebug
-./gradlew installRelease      # Release is signed with the debug key (a personal app), so it installs without setting up keys
+./gradlew installRelease      # without a release key (see below) it is signed with the debug key, so it still installs
 ```
+
+**Signing.** The release build is signed with the key described by the `nosleepcam.signing.storeFile`,
+`nosleepcam.signing.storePassword`, `nosleepcam.signing.keyAlias` and `nosleepcam.signing.keyPassword` Gradle properties
+(put them in `~/.gradle/gradle.properties`, never in the repository). Without them — on a fresh clone or in CI — the debug key
+is used instead: such an APK builds and installs, but it is not a publishable release.
 
 The minimum Android version is 7.0 (API 24). There are no AndroidX/Material dependencies — only framework widgets and the
 Kotlin stdlib.

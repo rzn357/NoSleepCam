@@ -19,13 +19,28 @@ android {
         minSdk = 24
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         buildConfigField("boolean", "STARTUP_TRACE", startupTrace.get().toString())
     }
 
     buildFeatures {
         buildConfig = true
+    }
+
+    // The release key lives outside the repository; its location and passwords come from ~/.gradle/gradle.properties
+    // (nosleepcam.signing.*). Without them (a fresh clone, CI) the release build is signed with the debug key instead,
+    // so it still builds and installs — but such an APK is not a publishable release.
+    val releaseKeyFile = providers.gradleProperty("nosleepcam.signing.storeFile").orNull
+    signingConfigs {
+        if (releaseKeyFile != null) {
+            create("release") {
+                storeFile = file(releaseKeyFile)
+                storePassword = providers.gradleProperty("nosleepcam.signing.storePassword").get()
+                keyAlias = providers.gradleProperty("nosleepcam.signing.keyAlias").get()
+                keyPassword = providers.gradleProperty("nosleepcam.signing.keyPassword").get()
+            }
+        }
     }
 
     buildTypes {
@@ -35,9 +50,7 @@ android {
             optimization {
                 enable = true
             }
-            // A personal app without its own key: we sign with the debug key so that the Release build
-            // (the one on which startup speed must be measured) can be installed on the phone.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     // The in-app language switcher (see AppLanguage) needs every language in the base APK: no per-language splits.
