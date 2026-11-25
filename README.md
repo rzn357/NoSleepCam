@@ -234,6 +234,21 @@ git config core.hooksPath .githooks
 (R8) builds on every push and pull request, and uploads the reports and the debug APK. Dependabot keeps the Gradle
 dependencies and the actions up to date.
 
+### Releasing
+
+1. Bump `versionCode` (always +1, otherwise Android refuses the update) and `versionName` in `app/build.gradle.kts`, and add a
+   `## [x.y.z] - date` section to [CHANGELOG.md](CHANGELOG.md).
+2. Commit, push and wait for a green CI.
+3. Tag and push: `git tag -a vx.y.z -m "NoSleepCam x.y.z" && git push origin vx.y.z`.
+   [`release.yml`](.github/workflows/release.yml) checks that the tag matches `versionName`, builds and signs the APK, verifies
+   the signature, and creates a **draft** release with the APK, its checksum, the R8 mapping and the changelog text.
+4. Open the draft on GitHub, check it and press **Publish release**.
+
+The workflow needs four repository secrets: `KEYSTORE_BASE64` (`base64 -w0 nosleepcam-release.jks`), `KEYSTORE_PASSWORD`,
+`KEY_ALIAS` and `KEY_PASSWORD`. To build the same files locally: `./gradlew collectRelease` (writes `dist/`, needs the
+`nosleepcam.signing.*` properties). The APK is not byte-for-byte reproducible (the signing block differs between builds), so the
+checksum in a release always belongs to the file attached to that release.
+
 ## Architecture
 
 The camera layer (`camera/`) knows nothing about views, strings or preferences: it reports data (`CameraCapabilities`,

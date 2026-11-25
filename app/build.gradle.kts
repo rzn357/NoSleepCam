@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.detekt)
@@ -6,6 +8,8 @@ plugins {
 // -PstartupTrace=true enables startup timestamps and frame rate diagnostics in logcat
 // (tags NSC-Startup, NSC-Fps, NSC-Req). In a normal build the calls are removed entirely by R8.
 val startupTrace = providers.gradleProperty("startupTrace").map { it.toBoolean() }.orElse(false)
+
+val releaseKeyFileProperty = providers.gradleProperty("nosleepcam.signing.storeFile")
 
 android {
     namespace = "com.exciteddev.nosleepcam"
@@ -31,7 +35,7 @@ android {
     // The release key lives outside the repository; its location and passwords come from ~/.gradle/gradle.properties
     // (nosleepcam.signing.*). Without them (a fresh clone, CI) the release build is signed with the debug key instead,
     // so it still builds and installs — but such an APK is not a publishable release.
-    val releaseKeyFile = providers.gradleProperty("nosleepcam.signing.storeFile").orNull
+    val releaseKeyFile = releaseKeyFileProperty.orNull
     signingConfigs {
         if (releaseKeyFile != null) {
             create("release") {
@@ -77,6 +81,39 @@ detekt {
     buildUponDefaultConfig = true
     config.setFrom(rootProject.file("config/detekt/detekt.yml"))
     source.setFrom("src/main/java", "src/test/java")
+}
+
+// `./gradlew collectRelease` builds the signed release APK and puts the files to publish into <repo>/dist (ignored by git):
+// NoSleepCam-<version>.apk, its .sha256 and the R8 mapping. It refuses to run without the release key, because the debug-key
+// fallback is not a publishable release. The same task is used by .github/workflows/release.yml.
+tasks.register<Copy>("collectRelease") {
+    // Locals, not script-level vals: the task actions must not capture the script object (configuration cache).
+    val releaseVersion = android.defaultConfig.versionName.orEmpty()
+    val hasReleaseKey = releaseKeyFileProperty.isPresent
+    val distDir = layout.projectDirectory.dir("../dist").asFile
+    group = "distribution"
+    description = "Builds the signed release APK and collects it with its checksum and R8 mapping into dist/."
+    dependsOn("assembleRelease")
+
+    val baseName = "NoSleepCam-$releaseVersion"
+    from(layout.buildDirectory.file("outputs/apk/release/app-release.apk")) { rename { "$baseName.apk" } }
+    from(layout.buildDirectory.file("outputs/mapping/release/mapping.txt")) { rename { "$baseName-mapping.txt" } }
+    into(distDir)
+
+    doFirst {
+        check(hasReleaseKey) {
+            "No release key: set the nosleepcam.signing.* Gradle properties (see README, \"Signing\") before collecting a release."
+        }
+    }
+    doLast {
+        val apk = distDir.resolve("$baseName.apk")
+        val hash =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(apk.readBytes())
+                .joinToString("") { "%02x".format(it) }
+        distDir.resolve("$baseName.apk.sha256").writeText("$hash *${apk.name}\n")
+    }
 }
 
 // The app deliberately does not depend on AppCompat/Material/AndroidX: only framework widgets and the Kotlin stdlib —
